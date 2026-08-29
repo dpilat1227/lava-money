@@ -1,0 +1,277 @@
+/**
+ * Produces a plausible ~6 months of accounts + transaction history for one
+ * newly "linked" institution. This is the seam where a real Plaid/bank-data
+ * adapter would eventually plug in (see BankProvider in
+ * lib/store/FinanceContext.tsx) -- everything downstream (budgets, trends,
+ * net worth) only depends on the shapes in lib/types.ts, not on how the data
+ * was produced.
+ *
+ * Recurring bills/subscriptions are generated from an explicit template list
+ * rather than "detected" after the fact -- we already know the cadence
+ * because we wrote it, so a detection heuristic would just be reproducing
+ * information we're throwing away for no reason. A real recurring-detection
+ * pass (grouping by merchant + amount tolerance + interval) belongs in the
+ * adapter layer once real transactions exist to detect patterns in.
+ */
+import type { Account, AccountType, RecurringCadence, RecurringSeries, Transaction } from '@/lib/types';
+import { addDays, addMonths, isoDate, startOfMonth } from '@/lib/utils/date';
+import { makeRng, pick, randFloat, randInt } from '@/lib/utils/rng';
+
+const MONTHS_BACK = 6;
+
+const GROCERY_MERCHANTS = ["Trader Joe's", 'Whole Foods', 'Safeway', 'Kroger', 'Costco Wholesale'];
+const DINING_MERCHANTS = ['Blue Bottle Coffee', 'Chipotle', 'Sweetgreen', 'Local Pizza Co', 'Thai Basil', 'Corner Deli'];
+const TRANSPORT_MERCHANTS = ['Uber', 'Lyft', 'Shell Gas', 'Chevron', 'City Transit Card'];
+const SHOPPING_MERCHANTS = ['Amazon', 'Target', 'Nike.com', 'IKEA', 'Best Buy'];
+const ENTERTAINMENT_MERCHANTS = ['AMC Theatres', 'Steam', 'Ticketmaster', 'Spotify Concerts'];
+const PERSONAL_CARE_MERCHANTS = ['Great Clips', 'Sephora', 'Local Spa'];
+const HEALTH_ONEOFF_MERCHANTS = ['CVS Pharmacy', 'Urgent Care Copay', 'Dental Associates'];
+const TRAVEL_MERCHANTS = ['United Airlines', 'Airbnb', 'Marriott Hotels', 'Delta Air Lines'];
+const SUBSCRIPTION_CATALOG: { name: string; amount: number }[] = [
+  { name: 'Netflix', amount: -15.99 },
+  { name: 'Spotify Premium', amount: -11.99 },
+  { name: 'iCloud+', amount: -2.99 },
+  { name: 'The New York Times', amount: -17 },
+  { name: 'Notion Plus', amount: -10 },
+  { name: 'Hulu', amount: -12.99 },
+  { name: 'Adobe Creative Cloud', amount: -54.99 },
+];
+
+interface RecurringTemplate {
+  merchantName: string;
+  categoryId: string;
+  cadence: RecurringCadence;
+  amount: number; // fixed or base amount
+  accountKind: 'checking' | 'credit';
+}
+
+export interface GeneratedBankData {
+  accounts: Account[];
+  transactions: Transaction[];
+  recurringSeries: RecurringSeries[];
+}
+
+export function generateBankData(institutionId: string, seed: number): GeneratedBankData {
+  const rng = makeRng(seed);
+  const idPrefix = `${institutionId}-${seed}`;
+
+  const hasSavings = rng() < 0.85;
+  const hasCredit = rng() < 0.75;
+
+  const checking: Account = {
+    id: `${idPrefix}-checking`,
+    institutionId,
+    name: 'Everyday Checking',
+    mask: String(randInt(rng, 1000, 9999)).slice(-4),
+    type: 'checking',
+    balance: 0, // filled in after transactions are generated
+    lastSyncedAt: new Date().toISOString(),
+  };
+
+  const savings: Account | null = hasSavings
+    ? {
+        id: `${idPrefix}-savings`,
+        institutionId,
+        name: 'High-Yield Savings',
+        mask: String(randInt(rng, 1000, 9999)).slice(-4),
+        type: 'savings',
+        balance: 0,
+        apy: randFloat(rng, 3.8, 4.9, 1),
+        lastSyncedAt: new Date().toISOString(),
+      }
+    : null;
+
+  const creditLimit = randInt(rng, 4, 15) * 1000;
+  const credit: Account | null = hasCredit
+    ? {
+        id: `${idPrefix}-credit`,
+        institutionId,
+        name: 'Rewards Credit Card',
+        mask: String(randInt(rng, 1000, 9999)).slice(-4),
+        type: 'credit_card',
+        balance: 0,
+        creditLimit,
+        lastSyncedAt: new Date().toISOString(),
+      }
+    : null;
+
+  const spendAccountId = credit?.id ?? checking.id;
+
+  const monthlyIncome = randInt(rng, 3600, 8200);
+  const paycheckAmount = Math.round((monthlyIncome / 2) * 100) / 100;
+
+  const templates: RecurringTemplate[] = [
+    { merchantName: 'Employer Payroll', categoryId: 'income', cadence: 'biweekly', amount: paycheckAmount, accountKind: 'checking' },
+    { merchantName: 'Skyline Apartments', categoryId: 'housing', cadence: 'monthly', amount: -randInt(rng, 1300, 2900), accountKind: 'checking' },
+    { merchantName: 'Pacific Power & Light', categoryId: 'utilities', cadence: 'monthly', amount: -randInt(rng, 60, 160), accountKind: 'checking' },
+    { merchantName: 'Metro Fiber Internet', categoryId: 'utilities', cadence: 'monthly', amount: -randInt(rng, 55, 95), accountKind: 'checking' },
+    { merchantName: 'Wireless Carrier', categoryId: 'utilities', cadence: 'monthly', amount: -randInt(rng, 45, 95), accountKind: 'checking' },
+    { merchantName: 'Equinox Fitness', categoryId: 'health', cadence: 'monthly', amount: -randInt(rng, 35, 85), accountKind: 'checking' },
+  ];
+
+  const subCount = randInt(rng, 3, 5);
+  const shuffled = [...SUBSCRIPTION_CATALOG].sort(() => rng() - 0.5).slice(0, subCount);
+  for (const sub of shuffled) {
+    templates.push({ merchantName: sub.name, categoryId: 'subscriptions', cadence: 'monthly', amount: sub.amount, accountKind: 'credit' });
+  }
+
+  const transactions: Transaction[] = [];
+  let txCounter = 0;
+  const nextTxId = () => `${idPrefix}-tx-${txCounter++}`;
+
+  const today = startOfMonth(new Date());
+  const rangeStart = addMonths(today, -MONTHS_BACK);
+
+  // Recurring bills + paychecks, walked forward by cadence across the window.
+  for (const tpl of templates) {
+    const accountId = tpl.accountKind === 'credit' ? spendAccountId : checking.id;
+    let cursor = new Date(rangeStart);
+    // Nudge each template onto its own day-of-month so a rendered list
+    // doesn't show five bills landing on the exact same date.
+    cursor = addDays(cursor, randInt(rng, 0, 27));
+
+    while (cursor < new Date()) {
+      const jitter = tpl.cadence === 'biweekly' ? 0 : randInt(rng, -1, 1);
+      const amount = tpl.categoryId === 'income' ? tpl.amount + randInt(rng, -50, 120) : tpl.amount + randFloat(rng, -3, 3, 2);
+      transactions.push({
+        id: nextTxId(),
+        accountId,
+        date: isoDate(addDays(cursor, jitter)),
+        merchantName: tpl.merchantName,
+        rawDescription: tpl.merchantName.toUpperCase().replace(/[^A-Z0-9]/g, ' ').trim(),
+        amount: Math.round(amount * 100) / 100,
+        categoryId: tpl.categoryId,
+      });
+      cursor = tpl.cadence === 'biweekly' ? addDays(cursor, 14) : tpl.cadence === 'weekly' ? addDays(cursor, 7) : addMonths(cursor, 1);
+    }
+  }
+
+  // Discretionary spend, scattered per month.
+  const discretionary: { merchants: string[]; categoryId: string; perMonth: [number, number]; amount: [number, number] }[] = [
+    { merchants: GROCERY_MERCHANTS, categoryId: 'groceries', perMonth: [3, 5], amount: [25, 160] },
+    { merchants: DINING_MERCHANTS, categoryId: 'dining', perMonth: [6, 12], amount: [8, 75] },
+    { merchants: TRANSPORT_MERCHANTS, categoryId: 'transport', perMonth: [3, 8], amount: [8, 60] },
+    { merchants: SHOPPING_MERCHANTS, categoryId: 'shopping', perMonth: [2, 5], amount: [15, 220] },
+    { merchants: ENTERTAINMENT_MERCHANTS, categoryId: 'entertainment', perMonth: [1, 3], amount: [10, 90] },
+    { merchants: PERSONAL_CARE_MERCHANTS, categoryId: 'personal_care', perMonth: [0, 2], amount: [20, 120] },
+  ];
+
+  for (let m = 0; m < MONTHS_BACK; m++) {
+    const monthStart = addMonths(rangeStart, m);
+    for (const group of discretionary) {
+      const count = randInt(rng, group.perMonth[0], group.perMonth[1]);
+      for (let i = 0; i < count; i++) {
+        const day = randInt(rng, 0, 27);
+        transactions.push({
+          id: nextTxId(),
+          accountId: spendAccountId,
+          date: isoDate(addDays(monthStart, day)),
+          merchantName: pick(rng, group.merchants),
+          rawDescription: 'CARD PURCHASE',
+          amount: -randFloat(rng, group.amount[0], group.amount[1]),
+          categoryId: group.categoryId,
+        });
+      }
+    }
+
+    // Rare bigger one-offs.
+    if (rng() < 0.35) {
+      transactions.push({
+        id: nextTxId(),
+        accountId: spendAccountId,
+        date: isoDate(addDays(monthStart, randInt(rng, 0, 27))),
+        merchantName: pick(rng, HEALTH_ONEOFF_MERCHANTS),
+        rawDescription: 'CARD PURCHASE',
+        amount: -randFloat(rng, 20, 280),
+        categoryId: 'health',
+      });
+    }
+    if (rng() < 0.22) {
+      transactions.push({
+        id: nextTxId(),
+        accountId: spendAccountId,
+        date: isoDate(addDays(monthStart, randInt(rng, 0, 27))),
+        merchantName: pick(rng, TRAVEL_MERCHANTS),
+        rawDescription: 'CARD PURCHASE',
+        amount: -randFloat(rng, 180, 1200),
+        categoryId: 'travel',
+      });
+    }
+    if (rng() < 0.18) {
+      transactions.push({
+        id: nextTxId(),
+        accountId: checking.id,
+        date: isoDate(addDays(monthStart, randInt(rng, 0, 27))),
+        merchantName: rng() < 0.5 ? 'Client Payment' : 'Year-End Bonus',
+        rawDescription: 'DEPOSIT',
+        amount: randFloat(rng, 150, 900),
+        categoryId: 'income',
+      });
+    }
+    if (credit && rng() < 0.15) {
+      transactions.push({
+        id: nextTxId(),
+        accountId: credit.id,
+        date: isoDate(addDays(monthStart, randInt(rng, 25, 28))),
+        merchantName: 'Interest Charge',
+        rawDescription: 'INTEREST CHARGE',
+        amount: -randFloat(rng, 8, 45),
+        categoryId: 'fees',
+      });
+    }
+  }
+
+  transactions.sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  // Derive current balances from a baseline plus everything that happened,
+  // so the ending balance is a consequence of the history, not a made-up
+  // number sitting next to it.
+  const sumFor = (accountId: string) => transactions.filter(t => t.accountId === accountId).reduce((s, t) => s + t.amount, 0);
+
+  checking.balance = Math.round((randFloat(rng, 800, 2600) + sumFor(checking.id)) * 100) / 100;
+  if (checking.balance < 150) checking.balance = randFloat(rng, 400, 900); // keep it from reading as overdrawn by default
+
+  if (savings) {
+    savings.balance = Math.round((randFloat(rng, 3000, 18000) + sumFor(savings.id)) * 100) / 100;
+  }
+  if (credit) {
+    const owed = randFloat(rng, 50, 400) - sumFor(credit.id); // spend is negative, so subtracting increases what's owed
+    credit.balance = Math.max(0, Math.round(Math.min(owed, creditLimit * 0.85) * 100) / 100);
+  }
+
+  // Recurring series list mirrors the templates directly -- see file header
+  // for why this isn't run through a detector.
+  const recurringSeries: RecurringSeries[] = templates.map((tpl, i) => {
+    const accountId = tpl.accountKind === 'credit' ? spendAccountId : checking.id;
+    const cadenceDays = tpl.cadence === 'biweekly' ? 14 : tpl.cadence === 'weekly' ? 7 : 30;
+    const lastTx = transactions.find(t => t.merchantName === tpl.merchantName);
+    const lastDate = lastTx ? new Date(lastTx.date + 'T00:00:00') : new Date();
+    return {
+      id: `${idPrefix}-recurring-${i}`,
+      merchantName: tpl.merchantName,
+      categoryId: tpl.categoryId,
+      cadence: tpl.cadence,
+      averageAmount: tpl.amount,
+      nextExpectedDate: isoDate(addDays(lastDate, cadenceDays)),
+      accountId,
+    };
+  });
+
+  const accounts: Account[] = [checking, savings, credit].filter((a): a is Account => a !== null);
+
+  return { accounts, transactions, recurringSeries };
+}
+
+export function defaultBudgets(): { categoryId: string; monthlyLimit: number }[] {
+  return [
+    { categoryId: 'groceries', monthlyLimit: 500 },
+    { categoryId: 'dining', monthlyLimit: 350 },
+    { categoryId: 'transport', monthlyLimit: 200 },
+    { categoryId: 'shopping', monthlyLimit: 250 },
+    { categoryId: 'entertainment', monthlyLimit: 120 },
+    { categoryId: 'personal_care', monthlyLimit: 100 },
+    { categoryId: 'subscriptions', monthlyLimit: 80 },
+  ];
+}
+
+export type { AccountType };

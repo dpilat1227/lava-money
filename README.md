@@ -1,56 +1,50 @@
-# Welcome to your Expo app 👋
+# Lava Finance
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A personal finance / net-worth tracker for iOS and Android — Copilot Money's
+core loop (net worth, budgets, spend trends, one clean transaction feed),
+styled to match [LavaMesh](https://www.lavamesh.com)'s dark, orange-accented
+brand instead of a generic fintech template.
+
+This is a demo build: there is no real bank connection. "Linking an account"
+runs a Plaid-Link-style simulated flow and generates ~6 months of realistic
+mock transaction history so every screen has real data to render, not empty
+states. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly where
+a real provider (Plaid, Teller, etc.) would plug in later.
 
 ## Get started
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Then press `i` for the iOS simulator or `a` for Android, or scan the QR code
+with Expo Go. This app is dark-only and native-tab-based (`NativeTabs`), so
+it's best evaluated on an actual simulator/device rather than the web preview
+— the web target exists purely as a fast bundling sanity check.
 
-### Other setup steps
+## What's here
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+- **Onboarding** — a welcome screen, then "link an account" (pick a fake
+  institution, watch a simulated Plaid-Link-style connect sequence).
+- **Home** — net worth, a 6-month trend chart, account balances, upcoming
+  recurring bills.
+- **Activity** — every transaction, grouped by day, searchable, tap through
+  to a detail view with an editable category and a note field.
+- **Budgets** — per-category monthly limits with progress bars; tap any
+  category to set or edit its limit.
+- **Trends** — income vs. spending by month, and a spending-by-category
+  donut with a 1/3/6-month range toggle.
+- **Settings** — manage linked accounts, link another, reset all local data.
 
-## Learn more
+All data lives on-device via `AsyncStorage`. Nothing is sent anywhere.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Docs
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the app is put
+  together, and the seam where a real bank-data provider slots in.
+- [`docs/HANDOFF.md`](docs/HANDOFF.md) — what's done, what's deliberately
+  cut for the MVP, and open decisions for the next session.
+- [`docs/competitive-analysis-copilot.md`](docs/competitive-analysis-copilot.md) —
+  brief competitive read on Copilot Money and positioning ideas for Lava
+  Finance.
