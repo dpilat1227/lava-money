@@ -1,13 +1,16 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
 
-import { CATEGORIES } from '@/lib/mock/categories';
+import { CATEGORIES, EXPENSE_CATEGORIES } from '@/lib/mock/categories';
 import { getInstitution, MANUAL_INSTITUTION, MOCK_INSTITUTIONS } from '@/lib/mock/institutions';
 import { defaultBudgets, generateBankData } from '@/lib/mock/generator';
 import { loadPersistedState, savePersistedState, clearPersistedState } from '@/lib/store/persistence';
+import { categorizeMerchant } from '@/lib/utils/categorizer';
+import { detectRecurringSeries } from '@/lib/utils/recurring';
 import type {
   Account,
   Budget,
   Category,
+  CustomCategoryInput,
   Institution,
   ManualAccountInput,
   ManualTransactionInput,
@@ -21,8 +24,8 @@ interface FinanceState {
   institutions: Institution[];
   accounts: Account[];
   transactions: Transaction[];
-  recurringSeries: RecurringSeries[];
   budgets: Budget[];
+  customCategories: Category[];
 }
 
 const initialState: FinanceState = {
@@ -30,8 +33,8 @@ const initialState: FinanceState = {
   institutions: [],
   accounts: [],
   transactions: [],
-  recurringSeries: [],
   budgets: [],
+  customCategories: [],
 };
 
 type Action =
@@ -49,7 +52,9 @@ type Action =
   | { type: 'DELETE_TRANSACTION'; transactionId: string }
   | { type: 'IMPORT_TRANSACTIONS'; accountId: string; rows: ParsedTransactionRow[] }
   | { type: 'REFRESH_ACCOUNT'; accountId: string }
-  | { type: 'REFRESH_ALL_LINKED' };
+  | { type: 'REFRESH_ALL_LINKED' }
+  | { type: 'ADD_CUSTOM_CATEGORY'; category: Category }
+  | { type: 'DELETE_CUSTOM_CATEGORY'; categoryId: string };
 
 let seedCounter = Date.now();
 let idCounter = 0;
@@ -83,7 +88,6 @@ function reducer(state: FinanceState, action: Action): FinanceState {
         institutions: alreadyLinked ? state.institutions : [...state.institutions, institution],
         accounts: [...state.accounts, ...generated.accounts],
         transactions: [...state.transactions, ...generated.transactions],
-        recurringSeries: [...state.recurringSeries, ...generated.recurringSeries],
         budgets,
       };
     }
@@ -91,17 +95,20 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     case 'UNLINK_ACCOUNT': {
       const accounts = state.accounts.filter(a => a.id !== action.accountId);
       const transactions = state.transactions.filter(t => t.accountId !== action.accountId);
-      const recurringSeries = state.recurringSeries.filter(r => r.accountId !== action.accountId);
       const remainingInstitutionIds = new Set(accounts.map(a => a.institutionId));
       const institutions = state.institutions.filter(i => remainingInstitutionIds.has(i.id));
-      return { ...state, accounts, transactions, recurringSeries, institutions };
+      return { ...state, accounts, transactions, institutions };
     }
 
     case 'CATEGORIZE_TRANSACTION':
       return {
         ...state,
+        // A human just picked this category -- whatever the categorizer
+        // guessed (right or wrong) no longer applies, so drop it rather
+        // than show a stale "why" explanation for a guess that's no longer
+        // in effect.
         transactions: state.transactions.map(t =>
-          t.id === action.transactionId ? { ...t, categoryId: action.categoryId } : t
+          t.id === action.transactionId ? { ...t, categoryId: action.categoryId, categoryGuess: undefined } : t
         ),
       };
 
@@ -181,16 +188,20 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     }
 
     case 'IMPORT_TRANSACTIONS': {
-      const imported: Transaction[] = action.rows.map(row => ({
-        id: nextId('import'),
-        accountId: action.accountId,
-        date: row.date,
-        merchantName: row.merchantName,
-        rawDescription: row.merchantName.toUpperCase(),
-        amount: row.amount,
-        categoryId: row.amount >= 0 ? 'income' : 'other',
-        entrySource: 'import',
-      }));
+      const imported: Transaction[] = action.rows.map(row => {
+        const guess = categorizeMerchant(row.merchantName, row.amount);
+        return {
+          id: nextId('import'),
+          accountId: action.accountId,
+          date: row.date,
+          merchantName: row.merchantName,
+          rawDescription: row.merchantName.toUpperCase(),
+          amount: row.amount,
+          categoryId: guess.categoryId,
+          entrySource: 'import',
+          categoryGuess: { reason: guess.reason, confidence: guess.confidence },
+        };
+      });
       return { ...state, transactions: [...imported, ...state.transactions] };
     }
 
@@ -211,13 +222,46 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       };
     }
 
+    case 'ADD_CUSTOM_CATEGORY': {
+      const nameTaken = [...CATEGORIES, ...state.customCategories].some(
+        c => c.name.toLowerCase() === action.category.name.toLowerCase()
+      );
+      if (nameTaken) return state;
+      return { ...state, customCategories: [...state.customCategories, action.category] };
+    }
+
+    case 'DELETE_CUSTOM_CATEGORY': {
+      // Reassign anything pointing at the deleted category to "other" and
+      // drop its budget row, rather than leaving dangling categoryIds that
+      // every downstream lookup would otherwise need a null-check for.
+      return {
+        ...state,
+        customCategories: state.customCategories.filter(c => c.id !== action.categoryId),
+        transactions: state.transactions.map(t =>
+          t.categoryId === action.categoryId ? { ...t, categoryId: 'other' } : t
+        ),
+        budgets: state.budgets.filter(b => b.categoryId !== action.categoryId),
+      };
+    }
+
     default:
       return state;
   }
 }
 
 interface FinanceContextValue extends FinanceState {
+  /** Fixed starter categories + everything in `customCategories`, merged.
+   * Use this (not the static `CATEGORIES` export) for any category lookup
+   * or picker list -- it's the only list that knows about categories the
+   * user created. */
   categories: Category[];
+  /** Same idea, filtered to `group === 'expense'` -- what every category
+   * picker (add transaction, set budget, CSV row re-categorize) should
+   * actually render, since custom categories are expense-only. */
+  expenseCategories: Category[];
+  /** Detected live from `transactions`/`accounts` on every change -- see
+   * `lib/utils/recurring.ts`. Not part of persisted state. */
+  recurringSeries: RecurringSeries[];
   institutionOptions: Institution[];
   linkInstitution: (institutionId: string) => void;
   unlinkAccount: (accountId: string) => void;
@@ -234,6 +278,10 @@ interface FinanceContextValue extends FinanceState {
   importTransactions: (accountId: string, rows: ParsedTransactionRow[]) => void;
   refreshAccount: (accountId: string) => void;
   refreshAllLinked: () => void;
+  /** Returns the new category's id, or null if the name collided with an
+   * existing category (case-insensitive) and nothing was created. */
+  addCustomCategory: (input: CustomCategoryInput) => string | null;
+  deleteCustomCategory: (categoryId: string) => void;
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null);
@@ -245,7 +293,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     loadPersistedState().then(persisted => {
       dispatch({
         type: 'HYDRATE',
-        payload: persisted ?? { institutions: [], accounts: [], transactions: [], recurringSeries: [], budgets: [] },
+        payload: persisted ?? {
+          institutions: [],
+          accounts: [],
+          transactions: [],
+          budgets: [],
+          customCategories: [],
+        },
       });
     });
   }, []);
@@ -256,15 +310,22 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       institutions: state.institutions,
       accounts: state.accounts,
       transactions: state.transactions,
-      recurringSeries: state.recurringSeries,
       budgets: state.budgets,
+      customCategories: state.customCategories,
     });
-  }, [state.isHydrated, state.institutions, state.accounts, state.transactions, state.recurringSeries, state.budgets]);
+  }, [state.isHydrated, state.institutions, state.accounts, state.transactions, state.budgets, state.customCategories]);
+
+  const recurringSeries = useMemo(
+    () => detectRecurringSeries(state.transactions, state.accounts),
+    [state.transactions, state.accounts]
+  );
 
   const value = useMemo<FinanceContextValue>(
     () => ({
       ...state,
-      categories: CATEGORIES,
+      categories: [...CATEGORIES, ...state.customCategories],
+      expenseCategories: [...EXPENSE_CATEGORIES, ...state.customCategories],
+      recurringSeries,
       institutionOptions: MOCK_INSTITUTIONS,
       linkInstitution: institutionId => dispatch({ type: 'LINK_INSTITUTION', institutionId }),
       unlinkAccount: accountId => dispatch({ type: 'UNLINK_ACCOUNT', accountId }),
@@ -287,8 +348,23 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       importTransactions: (accountId, rows) => dispatch({ type: 'IMPORT_TRANSACTIONS', accountId, rows }),
       refreshAccount: accountId => dispatch({ type: 'REFRESH_ACCOUNT', accountId }),
       refreshAllLinked: () => dispatch({ type: 'REFRESH_ALL_LINKED' }),
+      addCustomCategory: input => {
+        const name = input.name.trim();
+        if (!name) return null;
+        const nameTaken = [...CATEGORIES, ...state.customCategories].some(
+          c => c.name.toLowerCase() === name.toLowerCase()
+        );
+        if (nameTaken) return null;
+        const id = nextId('cat');
+        dispatch({
+          type: 'ADD_CUSTOM_CATEGORY',
+          category: { id, name, emoji: input.emoji || '🏷️', color: input.color, group: 'expense', isCustom: true },
+        });
+        return id;
+      },
+      deleteCustomCategory: categoryId => dispatch({ type: 'DELETE_CUSTOM_CATEGORY', categoryId }),
     }),
-    [state]
+    [state, recurringSeries]
   );
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

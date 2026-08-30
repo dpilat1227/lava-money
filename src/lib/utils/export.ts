@@ -2,9 +2,9 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 
-import { getCategory } from '@/lib/mock/categories';
+import { findCategory } from '@/lib/mock/categories';
 import { getInstitution } from '@/lib/mock/institutions';
-import type { Account, Budget, Institution, RecurringSeries, Transaction } from '@/lib/types';
+import type { Account, Budget, Category, Institution, RecurringSeries, Transaction } from '@/lib/types';
 import { transactionsToCsv } from '@/lib/utils/csv';
 
 /**
@@ -21,6 +21,7 @@ export interface ExportableState {
   transactions: Transaction[];
   recurringSeries: RecurringSeries[];
   budgets: Budget[];
+  customCategories: Category[];
 }
 
 async function shareTextFile(fileName: string, mimeType: string, content: string): Promise<boolean> {
@@ -57,7 +58,11 @@ export async function exportAllDataAsJson(state: ExportableState): Promise<boole
   return shareTextFile('lava-finance-export.json', 'application/json', JSON.stringify(payload, null, 2));
 }
 
-export async function exportTransactionsAsCsv(transactions: Transaction[], accounts: Account[]): Promise<boolean> {
+export async function exportTransactionsAsCsv(
+  transactions: Transaction[],
+  accounts: Account[],
+  categories: Category[]
+): Promise<boolean> {
   const accountById = new Map(accounts.map(a => [a.id, a]));
   const rows = [...transactions]
     .sort((a, b) => (a.date < b.date ? 1 : -1))
@@ -67,7 +72,7 @@ export async function exportTransactionsAsCsv(transactions: Transaction[], accou
         date: t.date,
         merchantName: t.merchantName,
         amount: t.amount,
-        categoryName: getCategory(t.categoryId).name,
+        categoryName: findCategory(categories, t.categoryId).name,
         accountName: account ? `${account.name} (${getInstitution(account.institutionId).name})` : 'Unknown',
       };
     });

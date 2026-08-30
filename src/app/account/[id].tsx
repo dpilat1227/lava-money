@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Amount, Button, CategoryIcon, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { EXPENSE_CATEGORIES, getCategory } from '@/lib/mock/categories';
+import { findCategory } from '@/lib/mock/categories';
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { isAssetAccount } from '@/lib/types';
@@ -25,6 +25,7 @@ export default function AccountDetailModal() {
   const {
     accounts,
     transactions,
+    categories,
     unlinkAccount,
     refreshAccount,
     importTransactions,
@@ -198,7 +199,7 @@ export default function AccountDetailModal() {
           </View>
         ) : (
           accountTx.map(tx => {
-            const category = getCategory(tx.categoryId);
+            const category = findCategory(categories, tx.categoryId);
             return (
               <Pressable key={tx.id} style={styles.txRow} onPress={() => router.push(`/transaction/${tx.id}`)}>
                 <CategoryIcon emoji={category.emoji} color={category.color} size={32} />
@@ -260,11 +261,11 @@ function decodeBase64(base64: string): string {
 }
 
 function AddTransactionSheet({ accountId, onClose }: { accountId: string; onClose: () => void }) {
-  const { addTransaction } = useFinance();
+  const { addTransaction, expenseCategories } = useFinance();
   const [merchantName, setMerchantName] = useState('');
   const [amount, setAmount] = useState('');
   const [isSpend, setIsSpend] = useState(true);
-  const [categoryId, setCategoryId] = useState(EXPENSE_CATEGORIES[0].id);
+  const [categoryId, setCategoryId] = useState(expenseCategories[0].id);
 
   const amountNumber = Number(amount.replace(/[^0-9.]/g, ''));
   const isValid = merchantName.trim().length > 0 && amount.trim().length > 0 && !Number.isNaN(amountNumber) && amountNumber > 0;
@@ -305,7 +306,7 @@ function AddTransactionSheet({ accountId, onClose }: { accountId: string; onClos
 
       <FieldLabel text="Category" style={{ marginTop: Spacing.md }} />
       <View style={sheetStyles.pillRow}>
-        {EXPENSE_CATEGORIES.map(c => (
+        {expenseCategories.map(c => (
           <Pressable
             key={c.id}
             onPress={() => setCategoryId(c.id)}

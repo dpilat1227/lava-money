@@ -6,14 +6,17 @@
  * net worth) only depends on the shapes in lib/types.ts, not on how the data
  * was produced.
  *
- * Recurring bills/subscriptions are generated from an explicit template list
- * rather than "detected" after the fact -- we already know the cadence
- * because we wrote it, so a detection heuristic would just be reproducing
- * information we're throwing away for no reason. A real recurring-detection
- * pass (grouping by merchant + amount tolerance + interval) belongs in the
- * adapter layer once real transactions exist to detect patterns in.
+ * Recurring bills/subscriptions still come from an explicit template list
+ * below (`templates`) -- that's the easiest way to generate *believable*
+ * mock history (a rent charge that actually lands monthly, a paycheck that
+ * actually lands biweekly). What this file does NOT do anymore is hand that
+ * template list back out as `RecurringSeries[]` -- recurring detection is a
+ * real algorithm now (`lib/utils/recurring.ts`, `detectRecurringSeries()`)
+ * that runs live over whatever transactions actually exist, so it works
+ * identically for this generator's output, hand-entered transactions, and
+ * CSV imports, instead of only working for accounts this file created.
  */
-import type { Account, AccountType, RecurringCadence, RecurringSeries, SyncStatus, Transaction } from '@/lib/types';
+import type { Account, AccountType, RecurringCadence, SyncStatus, Transaction } from '@/lib/types';
 import { addDays, addMonths, isoDate, startOfMonth } from '@/lib/utils/date';
 import { makeRng, pick, randFloat, randInt } from '@/lib/utils/rng';
 
@@ -71,7 +74,6 @@ interface RecurringTemplate {
 export interface GeneratedBankData {
   accounts: Account[];
   transactions: Transaction[];
-  recurringSeries: RecurringSeries[];
 }
 
 export function generateBankData(institutionId: string, seed: number): GeneratedBankData {
@@ -158,7 +160,16 @@ export function generateBankData(institutionId: string, seed: number): Generated
 
     while (cursor < new Date()) {
       const jitter = tpl.cadence === 'biweekly' ? 0 : randInt(rng, -1, 1);
-      const amount = tpl.categoryId === 'income' ? tpl.amount + randInt(rng, -50, 120) : tpl.amount + randFloat(rng, -3, 3, 2);
+      // Subscription prices don't fluctuate month to month -- charging the
+      // exact template amount every time (unlike variable bills below) is
+      // what makes them "subscriptions" rather than "variable expenses,"
+      // and it's what a real recurring-detector should be able to key off.
+      const amount =
+        tpl.categoryId === 'income'
+          ? tpl.amount + randInt(rng, -50, 120)
+          : tpl.categoryId === 'subscriptions'
+            ? tpl.amount
+            : tpl.amount + randFloat(rng, -3, 3, 2);
       transactions.push({
         id: nextTxId(),
         accountId,
@@ -265,27 +276,9 @@ export function generateBankData(institutionId: string, seed: number): Generated
     credit.balance = Math.max(0, Math.round(Math.min(owed, creditLimit * 0.85) * 100) / 100);
   }
 
-  // Recurring series list mirrors the templates directly -- see file header
-  // for why this isn't run through a detector.
-  const recurringSeries: RecurringSeries[] = templates.map((tpl, i) => {
-    const accountId = tpl.accountKind === 'credit' ? spendAccountId : checking.id;
-    const cadenceDays = tpl.cadence === 'biweekly' ? 14 : tpl.cadence === 'weekly' ? 7 : 30;
-    const lastTx = transactions.find(t => t.merchantName === tpl.merchantName);
-    const lastDate = lastTx ? new Date(lastTx.date + 'T00:00:00') : new Date();
-    return {
-      id: `${idPrefix}-recurring-${i}`,
-      merchantName: tpl.merchantName,
-      categoryId: tpl.categoryId,
-      cadence: tpl.cadence,
-      averageAmount: tpl.amount,
-      nextExpectedDate: isoDate(addDays(lastDate, cadenceDays)),
-      accountId,
-    };
-  });
-
   const accounts: Account[] = [checking, savings, credit].filter((a): a is Account => a !== null);
 
-  return { accounts, transactions, recurringSeries };
+  return { accounts, transactions };
 }
 
 export function defaultBudgets(): { categoryId: string; monthlyLimit: number }[] {

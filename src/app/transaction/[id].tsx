@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Amount, Badge, Button, CategoryIcon, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { CATEGORIES, getCategory } from '@/lib/mock/categories';
+import { findCategory } from '@/lib/mock/categories';
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatFullDate } from '@/lib/utils/date';
@@ -19,7 +19,7 @@ const ENTRY_SOURCE_LABEL: Record<string, string> = {
 export default function TransactionDetailModal() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { transactions, accounts, categorizeTransaction, setNote, deleteTransaction } = useFinance();
+  const { transactions, accounts, categories, expenseCategories, categorizeTransaction, setNote, deleteTransaction } = useFinance();
   const [pickingCategory, setPickingCategory] = useState(false);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
 
@@ -37,7 +37,7 @@ export default function TransactionDetailModal() {
   }
 
   const account = accounts.find(a => a.id === tx.accountId);
-  const category = getCategory(tx.categoryId);
+  const category = findCategory(categories, tx.categoryId);
   const note = noteDraft ?? tx.notes ?? '';
 
   return (
@@ -86,9 +86,18 @@ export default function TransactionDetailModal() {
           </Text>
         </Pressable>
 
+        {tx.categoryGuess && (
+          <View style={styles.guessNote}>
+            <Text variant="micro" color={Colors.text4}>
+              Auto-categorized: {tx.categoryGuess.reason}
+              {tx.categoryGuess.confidence === 'low' ? ' — low confidence, worth double-checking' : ''}
+            </Text>
+          </View>
+        )}
+
         {pickingCategory && (
           <FlatList
-            data={CATEGORIES.filter(c => c.group === 'expense')}
+            data={expenseCategories}
             keyExtractor={c => c.id}
             numColumns={2}
             scrollEnabled={false}
@@ -187,6 +196,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border1,
   },
+  guessNote: { paddingHorizontal: Spacing.md, paddingTop: 6 },
   categoryOption: {
     flex: 1,
     flexDirection: 'row',

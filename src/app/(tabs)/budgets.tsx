@@ -4,17 +4,17 @@ import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react
 import { Button, CategoryIcon, ProgressBar, ScreenHeader, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useBudgetProgress } from '@/hooks/useFinanceSelectors';
-import { EXPENSE_CATEGORIES, getCategory } from '@/lib/mock/categories';
+import { findCategory } from '@/lib/mock/categories';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatCurrency, formatPercent } from '@/lib/utils/currency';
 
 export default function BudgetsScreen() {
-  const { setBudget } = useFinance();
+  const { setBudget, categories, expenseCategories } = useFinance();
   const progress = useBudgetProgress();
   const [editing, setEditing] = useState<string | null>(null);
 
   const budgetedIds = new Set(progress.map(p => p.categoryId));
-  const unbudgeted = EXPENSE_CATEGORIES.filter(c => !budgetedIds.has(c.id));
+  const unbudgeted = expenseCategories.filter(c => !budgetedIds.has(c.id));
 
   const totalSpent = progress.reduce((s, p) => s + p.spent, 0);
   const totalLimit = progress.reduce((s, p) => s + p.limit, 0);
@@ -37,15 +37,15 @@ export default function BudgetsScreen() {
         <View style={{ marginTop: Spacing.md, gap: Spacing.sm }}>
           {progress.map(p => (
             <Pressable key={p.categoryId} onPress={() => setEditing(p.categoryId)} style={styles.budgetRow}>
-              <CategoryIcon emoji={getCategory(p.categoryId).emoji} color={getCategory(p.categoryId).color} size={34} />
+              <CategoryIcon emoji={findCategory(categories, p.categoryId).emoji} color={findCategory(categories, p.categoryId).color} size={34} />
               <View style={{ flex: 1, marginLeft: Spacing.md }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <Text variant="body">{getCategory(p.categoryId).name}</Text>
+                  <Text variant="body">{findCategory(categories, p.categoryId).name}</Text>
                   <Text variant="caption" color={p.pct > 1 ? Colors.red : Colors.text3}>
                     {formatCurrency(p.spent, { compact: true })} / {formatCurrency(p.limit, { compact: true })}
                   </Text>
                 </View>
-                <ProgressBar pct={p.pct} color={getCategory(p.categoryId).color} />
+                <ProgressBar pct={p.pct} color={findCategory(categories, p.categoryId).color} />
               </View>
             </Pressable>
           ))}
@@ -97,7 +97,8 @@ function EditBudgetModal({
   onSave: (limit: number) => void;
 }) {
   const [value, setValue] = useState(String(currentLimit));
-  const category = getCategory(categoryId);
+  const { categories } = useFinance();
+  const category = findCategory(categories, categoryId);
 
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>

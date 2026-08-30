@@ -45,22 +45,37 @@ src/
     ui/                 Design-system primitives (Text, Card, Amount, Button,
                         ProgressBar, Badge, CategoryIcon, EmptyState, ScreenHeader)
     charts/             NetWorthChart, CategoryDonut, FlowBarChart
+    insights/           RecurringInsightsCard -- the Trends-screen "recurring
+                        & subscriptions" surface (see below)
   lib/
     types.ts            Core data model (Account, Transaction, Category, ...)
-                        including AccountSource ('linked' | 'manual') and
-                        SyncStatus ('synced' | 'stale' | 'error' | 'manual')
+                        including AccountSource ('linked' | 'manual'),
+                        SyncStatus ('synced' | 'stale' | 'error' | 'manual'),
+                        Category.isCustom, and Transaction.categoryGuess
+                        (set by the categorizer, cleared once a user picks
+                        a category themselves)
     store/
       FinanceContext.tsx  App state: reducer + actions + selectors-by-hook.
                         Actions now include addManualAccount,
                         updateAccountBalance, addTransaction,
                         updateTransaction, deleteTransaction,
-                        importTransactions, refreshAccount, refreshAllLinked
+                        importTransactions, refreshAccount, refreshAllLinked,
+                        addCustomCategory, deleteCustomCategory.
+                        `recurringSeries` and `categories` (fixed + custom,
+                        merged) are computed values on the context, not
+                        persisted state -- see "recurring detection" and
+                        "custom categories" below.
       persistence.ts      AsyncStorage read/write
     mock/
       generator.ts        Produces ~6 months of accounts + transactions for
                           one newly-linked institution, including a rolled
-                          connection-health state per account (see below)
-      categories.ts        Fixed category list (income/expense/transfer)
+                          connection-health state per account (see below).
+                          No longer emits its own RecurringSeries -- see
+                          "recurring detection" below.
+      categories.ts        Fixed starter category list (income/expense/
+                          transfer) + `findCategory(categories, id)`, which
+                          looks up a category in a caller-supplied list
+                          (fixed + custom) instead of the static list alone
       institutions.ts       Fictional institution list for the link flow,
                           plus MANUAL_INSTITUTION (the placeholder
                           "institution" every hand-added account belongs to)
@@ -74,9 +89,24 @@ src/
                           color, and "is this actionable" flag for the UI
       export.ts           Full-state JSON export and transactions-only CSV
                           export, both via the OS share sheet
+      recurring.ts        Real recurring-charge *detection* over
+                          `Transaction[]` -- merchant normalization +
+                          amount tolerance + interval-gap clustering into
+                          weekly/biweekly/monthly buckets. See "recurring
+                          detection" below.
+      categorizer.ts      Rules-based merchant categorization
+                          (`categorizeMerchant`) with a human-readable
+                          "why" (exact-merchant and keyword rule tables),
+                          used on CSV import and by the review-suggestions
+                          flow (`findCategorySuggestions`)
+      insights.ts         `buildRecurringInsights()` -- reshapes
+                          `RecurringSeries[]` into monthly-equivalent
+                          subscription/bill totals and due-soon/overdue
+                          status flags for `RecurringInsightsCard`
   hooks/
     useFinanceSelectors.ts  Derived data: net worth history, budget progress,
-                            monthly income/expense, grouped transactions, etc.
+                            monthly income/expense, grouped transactions,
+                            recurring insights, etc.
   constants/theme.ts    Design tokens ported from LavaMesh's `app/globals.css`
 ```
 
@@ -121,11 +151,15 @@ To wire in a real provider (Plaid, Teller, Finicity, etc.) later:
    `NetWorthPoint` snapshot on a monthly cron/schedule instead, and use the
    reconstruction function only as a bootstrap for brand-new accounts that
    don't have snapshots yet.
-5. Recurring-bill detection (`RecurringSeries`) is currently generated
-   directly from the mock generator's own templates — it isn't "detected,"
-   it's known upfront because the generator wrote the data. A real adapter
-   needs an actual detection pass (group by merchant + amount tolerance +
-   interval) once real, noisy transaction data exists to detect patterns in.
+5. ~~Recurring-bill detection (`RecurringSeries`) is currently generated
+   directly from the mock generator's own templates~~ — no longer true as
+   of night 3: `lib/utils/recurring.ts`'s `detectRecurringSeries()` runs a
+   real detection pass (merchant normalization + amount tolerance +
+   interval-gap clustering) over whatever `Transaction[]` exists, called
+   live from `FinanceContext` and memoized on `transactions`/`accounts`.
+   It works identically for linked, manual, and CSV-imported accounts —
+   nothing generator-specific about it. A real bank adapter needs no
+   change here at all.
 
 ## Manual accounts: the data-ownership path, not a fallback
 
@@ -193,6 +227,52 @@ exists, since it's cheap to plan for now and expensive to retrofit later.
   `rollSyncState()`/`simulateRefresh()` -- the UI layer doesn't need to
   change at all, since it already only reads those two fields.
 
+## Custom categories
+
+`Category.isCustom` distinguishes a category the user created
+(`addCustomCategory()`) from the fixed starter list in
+`lib/mock/categories.ts`. Only custom categories can be deleted — the fixed
+list is load-bearing for mock data generation and default budgets, so
+removing one of those would leave dangling `categoryId` references
+everywhere. `FinanceContext` exposes a single merged `categories` (and
+`expenseCategories`) array — fixed list + `state.customCategories` — so
+every screen reads one list and never has to know or care which category
+came from where. `findCategory(categories, id)` (in `lib/mock/categories.ts`)
+is the one lookup helper that takes that merged list as a parameter; the
+older `getCategory(id)` (fixed list only) is kept only for call sites that
+deliberately want the static list.
+
+## Recurring detection and the Insights surface
+
+`lib/utils/recurring.ts`'s `detectRecurringSeries(transactions, accounts)`
+groups transactions by normalized merchant name + account, requires at
+least 2 occurrences, classifies the typical gap between them into
+weekly/biweekly/monthly buckets, and requires amounts to be consistent
+within a tolerance (tighter for exactly 2 occurrences, looser once there
+are 3+ and gap-consistency is also being checked). It's a pure function
+over transaction history — no persisted `RecurringSeries[]` exists
+anywhere; `FinanceContext` computes it with `useMemo` on every render where
+`transactions`/`accounts` changed, so it's always a live consequence of
+current data, including right after a CSV import or a manual entry, not
+just for generator-linked accounts.
+
+`lib/utils/insights.ts`'s `buildRecurringInsights()` is a second, thin
+layer on top of that same detector output — no separate data source — that
+normalizes each series' amount to a monthly-equivalent rate (so a weekly
+and a monthly charge sum meaningfully), splits the total into
+"Subscriptions" (category `subscriptions`) vs. "Recurring bills"
+(everything else), and flags each item `active` / `due_soon` / `overdue`
+based on how far past `nextExpectedDate` it is relative to a per-cadence
+grace window. "Overdue" is a scheduling inference ("this expected charge
+didn't show up on time") presented honestly as "may have lapsed," not a
+claim about whether the user still uses the service — there's no usage
+signal in this data model to base that claim on. Rendered by
+`components/insights/RecurringInsightsCard.tsx` on the Trends screen. This
+is the proactive-surfacing feature from `docs/STRATEGY.md`'s "night 3"
+read on Rocket Money's Rowan/ChatGPT-finance trend — same value (surface
+something before the user has to notice it themselves), deliberately none
+of the risk (no agent, no LLM call, no bank-action capability).
+
 ## Known limitations (deliberate, for an MVP)
 
 - No light mode. LavaMesh itself has no light mode; matching that was a
@@ -203,7 +283,6 @@ exists, since it's cheap to plan for now and expensive to retrofit later.
   generator never actually produces one yet. Credit card balances only grow
   across the generated window; they're never paid down in the mock data.
 - No auth, no multi-user, no cloud sync — single local user, single device.
-- Category list is fixed (no custom categories yet).
 - `react-native-svg`'s `<G rotation origin>` (used by the category donut)
   logs a harmless `transform-origin` DOM-property warning on the **web**
   target only; doesn't occur on iOS/Android, which are the actual targets.
@@ -215,12 +294,17 @@ exists, since it's cheap to plan for now and expensive to retrofit later.
   the product hasn't actually decided on yet. If "balance should follow
   from transactions" becomes the desired model later, that's a product
   decision to make deliberately, not a bug to fix.
-- CSV import assigns every imported row a generic category (`income` for
-  positive amounts, `other` for negative) — there's no merchant-name
-  categorization heuristic yet. Fine for a preview-and-commit flow where the
-  user can re-categorize afterward; would want real categorization (rules
-  or ML, the way Copilot's per-user model works) before this scales past a
-  few dozen rows at a time.
+- ~~CSV import assigns every imported row a generic category~~ — no longer
+  true as of night 3: `lib/utils/categorizer.ts`'s `categorizeMerchant()`
+  runs a rules-based pass (exact-merchant + keyword matching) on import,
+  storing a `categoryGuess` (`reason` + `confidence`) alongside the
+  assigned category. It's intentionally not ML — a fixed, auditable rule
+  table stays honest about "why" a merchant text is going to be reliably
+  matched by a rule table (chains, subscriptions, common keywords) and
+  where it won't (small/local merchants, ambiguous descriptions) — that's
+  what `/review-categories` and the transaction-detail "why" note are for.
+  Would want a real per-user learning model (the way Copilot's does)
+  before this scales past casual/beta use.
 - The CSV importer/exporter round-trips date/merchant/amount only — no
   pending-status, notes, or category are preserved on import (there's
   nothing to read them from in a generic bank export), and export intentionally

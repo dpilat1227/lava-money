@@ -3,7 +3,8 @@ import { View } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 
 import { Colors } from '@/constants/theme';
-import { getCategory } from '@/lib/mock/categories';
+import { CATEGORIES, findCategory } from '@/lib/mock/categories';
+import type { Category } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils/currency';
 import { Text } from '@/components/ui/Text';
 
@@ -15,9 +16,13 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 interface Props {
   data: { categoryId: string; total: number }[];
   centerLabel?: string;
+  /** Merged fixed+custom category list, from `useFinance()`. Defaults to
+   * the fixed list so existing call sites without custom categories keep
+   * working unchanged. */
+  categories?: Category[];
 }
 
-export function CategoryDonut({ data, centerLabel }: Props) {
+export function CategoryDonut({ data, centerLabel, categories = CATEGORIES }: Props) {
   const total = data.reduce((s, d) => s + d.total, 0);
 
   if (total === 0) {
@@ -35,7 +40,7 @@ export function CategoryDonut({ data, centerLabel }: Props) {
       const previous = acc[acc.length - 1];
       const offset = previous ? previous.offset + previous.dashLength : 0;
       const dashLength = (d.total / total) * CIRCUMFERENCE;
-      return [...acc, { ...d, dashLength, offset, color: getCategory(d.categoryId).color }];
+      return [...acc, { ...d, dashLength, offset, color: findCategory(categories, d.categoryId).color }];
     },
     []
   );
@@ -77,7 +82,7 @@ export function CategoryDonut({ data, centerLabel }: Props) {
           <View key={s.categoryId} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: s.color }} />
             <Text variant="caption" color={Colors.text2} style={{ flex: 1 }} numberOfLines={1}>
-              {getCategory(s.categoryId).name}
+              {findCategory(categories, s.categoryId).name}
             </Text>
             <Text variant="caption" weight="semibold">
               {formatCurrency(s.total, { compact: true })}

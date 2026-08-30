@@ -20,8 +20,22 @@ export const CATEGORIES: Category[] = [
   { id: 'other', name: 'Other', emoji: '📦', color: Colors.text3, group: 'expense' },
 ];
 
+/** Looks up a category by id in the fixed list only. Most of the app
+ * shouldn't call this directly -- custom categories (see
+ * `FinanceContext.categories`) live outside `CATEGORIES` and won't be found
+ * here. Use `findCategory(categories, id)` with the merged list from
+ * `useFinance()` instead; this stays exported for the couple of call sites
+ * (default-budget seeding, the mock generator) that only ever reference the
+ * fixed list on purpose. */
 export function getCategory(id: string): Category {
   return CATEGORIES.find(c => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
+}
+
+/** Looks up a category by id in a caller-supplied list (fixed + custom),
+ * falling back to "Other" so a stale/deleted categoryId never crashes a
+ * render -- same fallback behavior as `getCategory`, just merge-aware. */
+export function findCategory(categories: Category[], id: string): Category {
+  return categories.find(c => c.id === id) ?? categories.find(c => c.id === 'other') ?? CATEGORIES[CATEGORIES.length - 1];
 }
 
 export const EXPENSE_CATEGORIES = CATEGORIES.filter(c => c.group === 'expense');

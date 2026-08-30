@@ -5,14 +5,16 @@ import { Pressable, SectionList, StyleSheet, TextInput, View } from 'react-nativ
 import { Amount, CategoryIcon, EmptyState, ScreenHeader, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useGroupedTransactions } from '@/hooks/useFinanceSelectors';
-import { getCategory } from '@/lib/mock/categories';
-import type { Transaction } from '@/lib/types';
+import { findCategory } from '@/lib/mock/categories';
+import { useFinance } from '@/lib/store/FinanceContext';
+import type { Category, Transaction } from '@/lib/types';
 import { formatDayLabel } from '@/lib/utils/date';
 
 export default function TransactionsScreen() {
   const [query, setQuery] = useState('');
   const groups = useGroupedTransactions(query);
   const router = useRouter();
+  const { categories } = useFinance();
 
   const sections = groups.map(g => ({ title: formatDayLabel(g.date), data: g.transactions }));
 
@@ -42,15 +44,15 @@ export default function TransactionsScreen() {
               {section.title}
             </Text>
           )}
-          renderItem={({ item }) => <TransactionRow tx={item} onPress={() => router.push(`/transaction/${item.id}`)} />}
+          renderItem={({ item }) => <TransactionRow tx={item} categories={categories} onPress={() => router.push(`/transaction/${item.id}`)} />}
         />
       )}
     </View>
   );
 }
 
-function TransactionRow({ tx, onPress }: { tx: Transaction; onPress: () => void }) {
-  const category = getCategory(tx.categoryId);
+function TransactionRow({ tx, categories, onPress }: { tx: Transaction; categories: Category[]; onPress: () => void }) {
+  const category = findCategory(categories, tx.categoryId);
   return (
     <Pressable style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]} onPress={onPress}>
       <CategoryIcon emoji={category.emoji} color={category.color} />

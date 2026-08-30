@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { useFinance } from '@/lib/store/FinanceContext';
 import type { NetWorthPoint, Transaction } from '@/lib/types';
 import { currentMonthKey, monthKey } from '@/lib/utils/date';
+import { buildRecurringInsights, type RecurringInsights } from '@/lib/utils/insights';
 import { buildNetWorthHistory, netWorthOf } from '@/lib/utils/netWorth';
 
 export function useNetWorthHistory(monthsBack = 6): NetWorthPoint[] {
@@ -72,6 +73,11 @@ export function useUpcomingRecurring(limit = 6) {
     () => [...recurringSeries].sort((a, b) => (a.nextExpectedDate < b.nextExpectedDate ? -1 : 1)).slice(0, limit),
     [recurringSeries, limit]
   );
+}
+
+export function useRecurringInsights(): RecurringInsights {
+  const { recurringSeries } = useFinance();
+  return useMemo(() => buildRecurringInsights(recurringSeries), [recurringSeries]);
 }
 
 export interface MonthlyFlow {

@@ -3,10 +3,12 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { CategoryDonut } from '@/components/charts/CategoryDonut';
 import { FlowBarChart } from '@/components/charts/FlowBarChart';
+import { RecurringInsightsCard } from '@/components/insights/RecurringInsightsCard';
 import { Card, ScreenHeader, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { useCategorySpendTotals, useMonthlyIncomeVsExpense } from '@/hooks/useFinanceSelectors';
-import { getCategory } from '@/lib/mock/categories';
+import { useCategorySpendTotals, useMonthlyIncomeVsExpense, useRecurringInsights } from '@/hooks/useFinanceSelectors';
+import { findCategory } from '@/lib/mock/categories';
+import { useFinance } from '@/lib/store/FinanceContext';
 import { formatCurrency } from '@/lib/utils/currency';
 
 const RANGE_OPTIONS = [
@@ -16,9 +18,11 @@ const RANGE_OPTIONS = [
 ] as const;
 
 export default function TrendsScreen() {
+  const { categories } = useFinance();
   const [months, setMonths] = useState<1 | 3 | 6>(1);
   const flow = useMonthlyIncomeVsExpense(6);
   const categoryTotals = useCategorySpendTotals(months);
+  const recurringInsights = useRecurringInsights();
 
   const avgIncome = flow.reduce((s, f) => s + f.income, 0) / flow.length;
   const avgExpense = flow.reduce((s, f) => s + f.expense, 0) / flow.length;
@@ -28,6 +32,8 @@ export default function TrendsScreen() {
       <ScreenHeader title="Trends" />
 
       <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.lg }}>
+        <RecurringInsightsCard insights={recurringInsights} />
+
         <Card>
           <Text variant="subtitle" color={Colors.text2} style={{ marginBottom: Spacing.md }}>
             Income vs. spending
@@ -62,7 +68,7 @@ export default function TrendsScreen() {
               ))}
             </View>
           </View>
-          <CategoryDonut data={categoryTotals} centerLabel={months === 1 ? 'This month' : `${months} months`} />
+          <CategoryDonut data={categoryTotals} centerLabel={months === 1 ? 'This month' : `${months} months`} categories={categories} />
         </Card>
 
         {categoryTotals.length > 0 && (
@@ -79,7 +85,7 @@ export default function TrendsScreen() {
                 }}
               >
                 <Text variant="body">
-                  {getCategory(c.categoryId).emoji} {getCategory(c.categoryId).name}
+                  {findCategory(categories, c.categoryId).emoji} {findCategory(categories, c.categoryId).name}
                 </Text>
                 <Text variant="body" weight="semibold">
                   {formatCurrency(c.total)}

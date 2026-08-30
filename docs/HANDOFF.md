@@ -1,3 +1,124 @@
+# Handoff — night 3: strategy audit + Insights, no reversal
+
+See `docs/STRATEGY.md` for the full audit (written first, per instruction,
+before touching code). Short version: the night-2 bet — real product path,
+data-ownership/local-first identity, Plaid optional, sync-status UI now,
+Impause deferred to v1.1 — holds. Nothing reversed. Rocket Money shipping an
+agentic "Rowan" assistant five days ago was the one genuinely new signal;
+the read on it (in the strategy doc) is "match the proactive-surfacing
+*value*, skip the agent/LLM/bank-action *risk*" — that's what tonight's
+Insights feature is. Verified by `npx tsc --noEmit` clean, `npx expo lint`
+clean, and Playwright-driven click-throughs of every new flow in the web
+preview (custom category creation/deletion, CSV import → categorizer guess
+→ transaction detail "why" note → `/review-categories` apply/skip/apply-all,
+and the new Trends "Recurring & subscriptions" card against a real linked
+demo bank with realistic subscription/bill data).
+
+## What's done tonight
+
+- **Real app icon, finally** (flagged as the most visible "looks
+  unfinished" signal for two nights running). LavaMesh's flame mark, an
+  orange `automatic-gradient` fill via Expo's iOS Icon Composer format
+  (`assets/expo.icon/`), regenerated favicon/splash/Android adaptive-icon
+  layers to match.
+- **Custom categories.** Settings has a new "Categories" section — add a
+  name/emoji/color, delete anything you added (the fixed starter list can't
+  be deleted, see `docs/ARCHITECTURE.md`). Every screen that used to read
+  the static category list (`account/[id]`, `CategoryDonut`, `trends`,
+  `budgets`, `transactions`, `export`) now reads the context's merged
+  fixed+custom list via `findCategory()` instead.
+- **Recurring detection is real now, not generator-only.** New
+  `lib/utils/recurring.ts`: merchant-normalize + amount-tolerance +
+  interval-gap clustering over actual `Transaction[]`, computed live in
+  `FinanceContext` (memoized, not persisted). Means manual and
+  CSV-imported accounts get recurring-charge detection for the first time —
+  previously only generator-linked accounts had any `RecurringSeries` at
+  all, because the generator just handed back its own templates. Stress-
+  tested against synthetic multi-month histories; found and fixed a mock-
+  data realism bug in the process (subscriptions were getting the same
+  ±$3 jitter as variable bills, which is a 30% swing on a $10 charge — real
+  subscriptions charge the same price every cycle; fixed in
+  `lib/mock/generator.ts`).
+- **Rules-based categorization with a visible "why."** New
+  `lib/utils/categorizer.ts`: exact-merchant and keyword rule tables produce
+  a category + confidence + human-readable reason. Runs automatically on
+  CSV import (`categoryGuess` on the transaction); transaction detail shows
+  "Auto-categorized: matched known merchant 'X'" (with a soft nudge to
+  double-check on low confidence). New `/review-categories` modal (linked
+  from a "N category suggestions to review" banner in Settings) lets you
+  apply or skip suggestions for existing "Other" transactions one at a time,
+  or all at once. Picking a category yourself always clears the guess —
+  it's not a guess anymore once a human confirmed it.
+- **Insights: "Recurring & subscriptions" card on Trends.** New
+  `lib/utils/insights.ts` + `components/insights/RecurringInsightsCard.tsx`:
+  monthly-equivalent subscriptions total, separate recurring-bills total, a
+  per-item list sorted by next-expected date, and `due_soon`/`overdue`
+  badges ("may have lapsed" past a per-cadence grace window). Built
+  entirely on the recurring detector's output — same data, different lens,
+  no new source of truth. This is deliberately the full scope of tonight's
+  "match Rowan's proactive-surfacing value, skip the agent risk" work; it
+  does not watch, cancel, or negotiate anything.
+
+## Decisions made without you tonight (flag anything you'd reverse)
+
+1. **"Overdue" language is deliberately hedged** ("may have lapsed," not
+   "you're being charged for something you don't use") — the only signal
+   available is "expected charge didn't show up by its grace window,"
+   which could mean lapsed, could mean the merchant is just running a few
+   days late. Didn't want the copy to claim more certainty than the data
+   supports.
+2. **Insights lives on the Trends tab, not a 6th tab.** NativeTabs already
+   has 5 (Home/Activity/Budgets/Trends/Settings); a 6th felt like it'd
+   crowd the bar for a feature that's a lens on data Trends already shows.
+   Revisit as its own tab if it grows real interactivity (per-item
+   snooze/dismiss, etc.) rather than staying a read-only summary card.
+3. **The categorizer is a fixed rule table, not a learning model.** Matches
+   the explicit "don't try to out-AI Copilot, do rules-with-explanations
+   instead" call from the earlier competitive analysis — an auditable "why"
+   is the actual differentiator here, not the categorization accuracy
+   itself. A real per-user learning pass is future scope, not a gap to
+   apologize for now.
+4. **`recurringSeries` and merged `categories` moved from persisted state to
+   computed values** (`useMemo` in `FinanceContext`, off `transactions`/
+   `accounts` and `customCategories` respectively). Both are now strictly
+   derived from other state, so persisting them risked drift (e.g. stale
+   `RecurringSeries` surviving a transaction delete). `customCategories`
+   itself is still persisted — that one's actual user input, not derived.
+5. Carried forward from nights 1–2 and still true: NativeTabs, onboarding
+   isn't a router route, fictional institution names, manual balances don't
+   follow transactions, budgets apply going-forward only, dark-only.
+
+## Open questions for you
+
+- **Impause-style spend-pause interaction** — still deferred to v1.1 per
+  our agreement, still needs your design input (trigger condition, feel,
+  dismissibility) before building. Tonight's Insights card covers the
+  "proactive surfacing" value in the meantime without that decision.
+- **Real bank data, ever, or stay demo/portfolio, or a lighter-trust
+  read-only aggregator (SimpleFIN-style) instead of Plaid** — carried
+  forward again; the strategy doc's research raised the stakes on
+  deciding deliberately (multiple 2026 local-first competitors use exactly
+  that lighter-trust pattern) but didn't resolve it. Still the single
+  biggest undecided fork in the roadmap.
+- **Does the "N suggestions to review" banner belong on Settings long-term**,
+  or would it read better as a Home banner (next to the existing "N accounts
+  need attention" one) since it's more of an actionable nudge than a
+  settings-page fact? Shipped on Settings tonight because that's where
+  category management already lives; easy to move if it reads as buried.
+
+## Where to start next
+
+Run `npx expo start`, link a demo bank (onboarding or Settings → "Connect a
+bank"), then check Trends for the new Recurring & subscriptions card, and
+Settings → Categories for custom-category add/delete and the suggestion
+review flow (import a CSV with an unrecognized-but-rule-matchable merchant
+like "STARBUCKS" to see a fresh suggestion appear). Everything in this doc
+should be visibly true within about five minutes. From there, the Impause
+interaction design and the real-bank-data fork above are the two decisions
+most worth making before the next build session.
+
+---
+
 # Handoff — night 2: the data-ownership pivot
 
 Last night was the MVP (net worth, budgets, trends, activity, a fake

@@ -54,13 +54,21 @@ it's best evaluated on an actual simulator/device rather than the web preview
   (linked / manual / imported), and delete.
 - **Budgets** — per-category monthly limits with progress bars; tap any
   category to set or edit its limit.
-- **Trends** — income vs. spending by month, and a spending-by-category
-  donut with a 1/3/6-month range toggle.
+- **Trends** — income vs. spending by month, a spending-by-category donut
+  with a 1/3/6-month range toggle, and a **Recurring & subscriptions**
+  card: monthly-equivalent subscriptions/bills totals, plus a per-charge
+  list flagging anything overdue past its expected date ("may have
+  lapsed"). Detected live from transaction history — works for linked,
+  manual, and CSV-imported accounts alike, not just simulated-linked ones.
 - **Settings** — linked accounts (grouped by institution, with a
   "refresh all" that surfaces how many need attention) and manually-tracked
-  accounts, in two separate sections; a **Data & Privacy** section that
-  exports everything as JSON (full backup) or CSV (transactions only)
-  through the OS share sheet; reset all local data.
+  accounts, in two separate sections; a **Categories** section to add/
+  delete custom categories beyond the starter list, plus a "review
+  suggestions" flow for transactions a rules-based categorizer thinks it
+  can re-categorize out of "Other" (with a visible "why" — e.g. "matched
+  known merchant"); a **Data & Privacy** section that exports everything as
+  JSON (full backup) or CSV (transactions only) through the OS share sheet;
+  reset all local data.
 
 All data lives on-device via `AsyncStorage`. Nothing is sent anywhere unless
 you tap Export yourself.
@@ -74,3 +82,6 @@ you tap Export yourself.
 - [`docs/competitive-analysis-copilot.md`](docs/competitive-analysis-copilot.md) —
   brief competitive read on Copilot Money and positioning ideas for Lava
   Finance.
+- [`docs/STRATEGY.md`](docs/STRATEGY.md) — broader personal-finance market
+  research, product positioning, and the roadmap decisions that shaped
+  what got built and why.

@@ -1,18 +1,35 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
-import { Card, ScreenHeader, Text } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { CategoryIcon, Card, ScreenHeader, Text } from '@/components/ui';
+import { ChartPalette, Colors, Radius, Spacing } from '@/constants/theme';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatCurrency } from '@/lib/utils/currency';
+import { findCategorySuggestions } from '@/lib/utils/categorizer';
 import { exportAllDataAsJson, exportTransactionsAsCsv } from '@/lib/utils/export';
 import { needsAttention, presentSyncStatus } from '@/lib/utils/sync';
 
+const EMOJI_CHOICES = ['🏷️', '🐾', '👶', '🎁', '🧾', '⚽', '📚', '🚙', '✂️', '💊', '🎓', '🖥️', '🎮', '🌱', '☕', '🎵', '🛠️', '🏖️'];
+
 export default function SettingsScreen() {
   const router = useRouter();
-  const { accounts, transactions, institutions, recurringSeries, budgets, resetAll, refreshAllLinked } = useFinance();
+  const {
+    accounts,
+    transactions,
+    institutions,
+    recurringSeries,
+    budgets,
+    categories,
+    customCategories,
+    resetAll,
+    refreshAllLinked,
+    addCustomCategory,
+    deleteCustomCategory,
+  } = useFinance();
   const [exporting, setExporting] = useState<'json' | 'csv' | null>(null);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const suggestionCount = useMemo(() => findCategorySuggestions(transactions).length, [transactions]);
 
   const linkedAccounts = accounts.filter(a => a.source === 'linked');
   const manualAccounts = accounts.filter(a => a.source === 'manual');
@@ -36,8 +53,9 @@ export default function SettingsScreen() {
               transactions,
               recurringSeries,
               budgets,
+              customCategories,
             })
-          : await exportTransactionsAsCsv(transactions, accounts);
+          : await exportTransactionsAsCsv(transactions, accounts, categories);
       if (!ok) Alert.alert('Export unavailable', "Sharing isn't available on this device.");
     } catch {
       Alert.alert('Export failed', 'Something went wrong putting that file together.');
@@ -148,6 +166,61 @@ export default function SettingsScreen() {
         </View>
 
         <View>
+          <View style={styles.sectionLabelRow}>
+            <SectionLabel text="Categories" />
+            <Pressable onPress={() => setAddingCategory(true)}>
+              <Text variant="caption" color={Colors.orange} weight="semibold">
+                + Add
+              </Text>
+            </Pressable>
+          </View>
+          {suggestionCount > 0 && (
+            <Pressable onPress={() => router.push('/review-categories')} style={styles.suggestionBanner}>
+              <Text variant="body" color={Colors.text2}>
+                {suggestionCount} category suggestion{suggestionCount === 1 ? '' : 's'} to review
+              </Text>
+              <Text variant="body" color={Colors.orange} weight="semibold">
+                Review ›
+              </Text>
+            </Pressable>
+          )}
+          <Card style={{ gap: Spacing.sm }}>
+            {customCategories.length === 0 ? (
+              <Text variant="body" color={Colors.text3}>
+                No custom categories yet. The starter list covers most spending — add one for anything it&apos;s missing
+                (Pets, Kids, Hobbies, whatever fits your life).
+              </Text>
+            ) : (
+              customCategories.map(c => (
+                <View key={c.id} style={styles.categoryRow}>
+                  <CategoryIcon emoji={c.emoji} color={c.color} size={30} />
+                  <Text variant="body" style={{ flex: 1, marginLeft: Spacing.md }}>
+                    {c.name}
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      Alert.alert(
+                        'Delete category',
+                        `Remove "${c.name}"? Any transactions or budgets using it move to "Other."`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Delete', style: 'destructive', onPress: () => deleteCustomCategory(c.id) },
+                        ]
+                      );
+                    }}
+                    hitSlop={8}
+                  >
+                    <Text variant="caption" color={Colors.text4}>
+                      Delete
+                    </Text>
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </Card>
+        </View>
+
+        <View>
           <SectionLabel text="Appearance" />
           <Card>
             <Text variant="body">Dark</Text>
@@ -176,7 +249,130 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
       </View>
+
+      {addingCategory && (
+        <AddCategoryModal
+          onClose={() => setAddingCategory(false)}
+          onSave={input => {
+            const id = addCustomCategory(input);
+            if (!id) {
+              Alert.alert('Category exists', `There's already a category named "${input.name}."`);
+              return;
+            }
+            setAddingCategory(false);
+          }}
+        />
+      )}
     </ScrollView>
+  );
+}
+
+function AddCategoryModal({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (input: { name: string; emoji: string; color: string }) => void;
+}) {
+  const [name, setName] = useState('');
+  const [emoji, setEmoji] = useState(EMOJI_CHOICES[0]);
+  const [color, setColor] = useState<string>(ChartPalette[0]);
+  const isValid = name.trim().length > 0;
+
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={e => e.stopPropagation()}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg }}>
+            <CategoryIcon emoji={emoji} color={color} size={32} />
+            <Text variant="title">New category</Text>
+          </View>
+
+          <Text variant="caption" color={Colors.text3} style={{ marginBottom: 6 }}>
+            Name
+          </Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g. Pets"
+            placeholderTextColor={Colors.text4}
+            style={styles.modalInput}
+            autoFocus
+          />
+
+          <Text variant="caption" color={Colors.text3} style={{ marginTop: Spacing.md, marginBottom: 6 }}>
+            Icon
+          </Text>
+          <View style={styles.emojiRow}>
+            {EMOJI_CHOICES.map(e => (
+              <Pressable
+                key={e}
+                onPress={() => setEmoji(e)}
+                style={[styles.emojiChip, e === emoji && { borderColor: color, backgroundColor: `${color}18` }]}
+              >
+                <Text style={{ fontSize: 16 }}>{e}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text variant="caption" color={Colors.text3} style={{ marginTop: Spacing.md, marginBottom: 6 }}>
+            Color
+          </Text>
+          <View style={styles.emojiRow}>
+            {ChartPalette.map(c => (
+              <Pressable
+                key={c}
+                onPress={() => setColor(c)}
+                style={[styles.colorSwatch, { backgroundColor: c }, c === color && styles.colorSwatchActive]}
+              />
+            ))}
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xl }}>
+            <View style={{ flex: 1 }}>
+              <PlainButton label="Cancel" onPress={onClose} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <PlainButton
+                label="Save"
+                primary
+                disabled={!isValid}
+                onPress={() => onSave({ name: name.trim(), emoji, color })}
+              />
+            </View>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+/** Local, no-frills button -- avoids pulling in the shared `Button`
+ * component's own margin/sizing assumptions for this one modal. */
+function PlainButton({
+  label,
+  onPress,
+  primary,
+  disabled,
+}: {
+  label: string;
+  onPress: () => void;
+  primary?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      style={[
+        styles.plainButton,
+        primary && { backgroundColor: Colors.orangeCta, borderColor: Colors.orangeCta },
+        disabled && { opacity: 0.5 },
+      ]}
+    >
+      <Text variant="body" weight="semibold" color={primary ? '#fff' : Colors.text2}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -238,5 +434,71 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     backgroundColor: Colors.redSoft,
     alignItems: 'center',
+  },
+  categoryRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+  suggestionBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm + 2,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.orangeSoft,
+    borderWidth: 1,
+    borderColor: 'rgba(255,115,0,0.3)',
+    marginBottom: Spacing.sm,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.xl,
+    padding: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.border2,
+  },
+  modalInput: {
+    backgroundColor: Colors.surface2,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md - 2,
+    color: Colors.text1,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: Colors.border1,
+  },
+  emojiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  emojiChip: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface2,
+    borderWidth: 1,
+    borderColor: Colors.border1,
+  },
+  colorSwatch: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  colorSwatchActive: { borderColor: Colors.text1 },
+  plainButton: {
+    alignItems: 'center',
+    paddingVertical: Spacing.md - 2,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border2,
+    backgroundColor: Colors.surface2,
   },
 });

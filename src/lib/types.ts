@@ -87,6 +87,24 @@ export interface Category {
   emoji: string;
   color: string;
   group: CategoryGroup;
+  /** True for a category the user created themselves (see
+   * `FinanceContext`'s `addCustomCategory`). Undefined/false for the fixed
+   * starter list in `lib/mock/categories.ts`. Only custom categories can be
+   * deleted -- the fixed list is load-bearing for mock data generation and
+   * default budgets, so removing one of those would leave dangling
+   * references everywhere. */
+  isCustom?: boolean;
+}
+
+/** Payload for hand-creating a category. Always `group: 'expense'` in the
+ * UI today -- letting users invent custom income/transfer categories opens
+ * up net-worth and budget-math edge cases (what does a custom "transfer"
+ * category even mean for the isTransfer exclusion logic?) that aren't worth
+ * solving for a v1 of "let me add a Pets category." */
+export interface CustomCategoryInput {
+  name: string;
+  emoji: string;
+  color: string;
 }
 
 export interface Transaction {
@@ -109,6 +127,14 @@ export interface Transaction {
    * flow, typed in by hand, or bulk-loaded from a CSV export. Cosmetic only
    * (a small tag in the detail view) -- nothing downstream branches on it. */
   entrySource?: 'linked' | 'manual' | 'import';
+  /** Set when `categoryId` was assigned by the rules-based categorizer
+   * (`lib/utils/categorizer.ts`) rather than chosen by the user -- lets the
+   * transaction detail screen show "why" this category was picked. Cleared
+   * the moment the user picks a category themselves (see
+   * `categorizeTransaction` in `FinanceContext`), since at that point it's
+   * not a guess anymore and showing a stale explanation would be
+   * misleading. */
+  categoryGuess?: { reason: string; confidence: 'high' | 'medium' | 'low' };
 }
 
 /** Payload for hand-entering a transaction on a manual (or any) account. */
@@ -132,6 +158,10 @@ export interface ManualAccountInput {
 
 export type RecurringCadence = 'weekly' | 'biweekly' | 'monthly' | 'yearly';
 
+/** Produced live by `lib/utils/recurring.ts`'s `detectRecurringSeries()` --
+ * not stored in persisted state. See that file for the detection approach
+ * (merchant + amount tolerance + interval clustering) and why it runs over
+ * real transactions instead of being generated alongside mock data. */
 export interface RecurringSeries {
   id: string;
   merchantName: string;
@@ -140,6 +170,13 @@ export interface RecurringSeries {
   averageAmount: number;
   nextExpectedDate: string; // ISO date
   accountId: string;
+  /** How many matching transactions the detector found -- higher means more
+   * confidence this is a real recurring charge, not coincidence. */
+  occurrenceCount: number;
+  /** ISO date of the most recent matching transaction. Compared against
+   * `nextExpectedDate` by the Insights screen to flag things that are
+   * overdue (may have lapsed/been cancelled) vs. just due soon. */
+  lastSeenDate: string;
 }
 
 /** One row per category. No per-month history in the MVP -- a limit applies
