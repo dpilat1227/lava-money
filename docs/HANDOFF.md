@@ -240,7 +240,7 @@ Settings, all four other tabs).
 - **Should CSV export include a re-importable superset** (categories,
   notes) instead of staying a plain portable format? Right now export and
   import are deliberately asymmetric — export is for humans (Excel/Sheets),
-  import is for whatever your bank actually gives you. A "Lava Finance
+  import is for whatever your bank actually gives you. A "Lava Money
   native" format would need its own decision about whether that's worth the
   complexity.
 

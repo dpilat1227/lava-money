@@ -1,7 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Account, Budget, Category, Institution, Transaction } from '@/lib/types';
 
-const STORAGE_KEY = 'lava_finance.v1';
+// Bumped from 'lava_finance.v1' at the Lava Money rename -- deliberately not
+// a migration (pre-launch demo data, nothing worth carrying forward), so
+// anyone with the old key just gets a fresh onboarding flow instead of a
+// silent, easy-to-miss "state didn't load" bug.
+const STORAGE_KEY = 'lava_money.v1';
 
 export interface PersistedState {
   institutions: Institution[];

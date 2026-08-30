@@ -51,11 +51,11 @@ async function shareTextFile(fileName: string, mimeType: string, content: string
 export async function exportAllDataAsJson(state: ExportableState): Promise<boolean> {
   const payload = {
     exportedAt: new Date().toISOString(),
-    app: 'Lava Finance',
+    app: 'Lava Money',
     version: 1,
     ...state,
   };
-  return shareTextFile('lava-finance-export.json', 'application/json', JSON.stringify(payload, null, 2));
+  return shareTextFile('lava-money-export.json', 'application/json', JSON.stringify(payload, null, 2));
 }
 
 export async function exportTransactionsAsCsv(
@@ -76,5 +76,5 @@ export async function exportTransactionsAsCsv(
         accountName: account ? `${account.name} (${getInstitution(account.institutionId).name})` : 'Unknown',
       };
     });
-  return shareTextFile('lava-finance-transactions.csv', 'text/csv', transactionsToCsv(rows));
+  return shareTextFile('lava-money-transactions.csv', 'text/csv', transactionsToCsv(rows));
 }

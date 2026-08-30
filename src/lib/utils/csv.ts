@@ -8,7 +8,7 @@
 export interface ParsedTransactionRow {
   date: string; // ISO yyyy-mm-dd
   merchantName: string;
-  amount: number; // negative = spend, positive = income (Lava Finance convention)
+  amount: number; // negative = spend, positive = income (Lava Money convention)
 }
 
 export interface CsvImportResult {

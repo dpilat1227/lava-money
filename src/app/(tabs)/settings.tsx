@@ -145,7 +145,7 @@ export default function SettingsScreen() {
           <SectionLabel text="Data & privacy" />
           <Card style={{ gap: Spacing.md }}>
             <Text variant="body" color={Colors.text2}>
-              Everything in Lava Finance — linked or manual — is stored only on this device. Nothing is uploaded
+              Everything in Lava Money — linked or manual — is stored only on this device. Nothing is uploaded
               anywhere unless you export it yourself.
             </Text>
             <View style={{ gap: Spacing.sm }}>
@@ -225,7 +225,7 @@ export default function SettingsScreen() {
           <Card>
             <Text variant="body">Dark</Text>
             <Text variant="micro" color={Colors.text4} style={{ marginTop: 2 }}>
-              Lava Finance is dark-only for now, to match LavaMesh.
+              Lava Money is dark-only for now, to match LavaMesh.
             </Text>
           </Card>
         </View>
@@ -236,7 +236,7 @@ export default function SettingsScreen() {
             <InfoRow label="Version" value="0.2.0" />
             <InfoRow label="Bank connections" value="Simulated demo data" />
             <InfoRow label="Manual accounts" value="Real — yours to edit" />
-            <InfoRow label="Built by" value="Lava Finance" />
+            <InfoRow label="Built by" value="Lava Money" />
           </Card>
         </View>
 

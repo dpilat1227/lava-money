@@ -1,5 +1,5 @@
 {
-  "name": "lava_finance",
+  "name": "lava-money",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {

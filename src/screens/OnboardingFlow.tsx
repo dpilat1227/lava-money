@@ -73,7 +73,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl }}>
       <FlameMark size={72} />
       <Text variant="display" style={{ marginTop: Spacing.xl, textAlign: 'center' }}>
-        Lava Finance
+        Lava Money
       </Text>
       <Text variant="body" color={Colors.text3} style={{ marginTop: Spacing.sm, textAlign: 'center', maxWidth: 300 }}>
         All your money, one clear picture — bank-linked or not. Your data stays on this device either way.

@@ -1,4 +1,4 @@
-# Lava Finance
+# Lava Money
 
 A personal finance / net-worth tracker for iOS and Android — Copilot Money's
 core loop (net worth, budgets, spend trends, one clean transaction feed),

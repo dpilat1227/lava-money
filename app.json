@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "lava_finance",
-    "slug": "lava_finance",
+    "name": "Lava Money",
+    "slug": "lava-money",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "lavafinance",
+    "scheme": "lavamoney",
     "userInterfaceStyle": "dark",
     "ios": {
       "icon": "./assets/expo.icon"

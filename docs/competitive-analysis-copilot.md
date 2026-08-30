@@ -39,7 +39,7 @@ as of writing.
   consistently call it "missing several iOS features."
 - **Price creep.** Multiple price increases since launch; users who signed
   up at legacy pricing feel it, and new users compare $13/mo against a
-  category where free alternatives (and Lava Finance) exist.
+  category where free alternatives (and Lava Money) exist.
 - **No free tier at all**, not even a limited one — just a trial that
   requires a card up front. Creates real trial-abandonment friction.
 - **Plaid sync reliability.** Recurring complaint: late, duplicated, or
@@ -58,7 +58,7 @@ as of writing.
   gap a couple of tiny competitor apps ("no bank login required") are
   explicitly marketing against.
 
-## What this means for positioning Lava Finance
+## What this means for positioning Lava Money
 
 Copilot's actual moat is design quality + AI categorization, not features —
 their feature set (budgets, net worth, recurring detection) is table stakes
@@ -68,7 +68,7 @@ structurally bad at, not what it's missing:
 
 1. **Android exists.** This is the single loudest, most consistent
    complaint about the category leader and it's not a bug they're rushing
-   to fix — it's a platform bet they've held for years. If Lava Finance
+   to fix — it's a platform bet they've held for years. If Lava Money
    ships Android at parity with iOS (which it will, being React
    Native/Expo from day one), "the good-looking finance app that actually
    works for Android, or for a mixed iPhone/Android household" is a real,

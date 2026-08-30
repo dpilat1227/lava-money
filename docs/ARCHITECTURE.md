@@ -309,7 +309,7 @@ of the risk (no agent, no LLM call, no bank-action capability).
   pending-status, notes, or category are preserved on import (there's
   nothing to read them from in a generic bank export), and export intentionally
   keeps the file portable (plain CSV a person can open in Excel/Sheets)
-  rather than a Lava-Finance-specific format.
+  rather than a Lava-Money-specific format.
 - Export writes to `expo-file-system/legacy`'s cache directory and hands
   off to `expo-sharing`, or on web triggers a browser download — there's no
   "export history" or in-app confirmation beyond the OS share sheet itself.

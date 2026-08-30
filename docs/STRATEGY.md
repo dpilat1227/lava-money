@@ -39,10 +39,10 @@ Checked tonight, current as of Aug 30, 2026:
    2026 with 200M+ people already asking it money questions before that
    existed. **This is the most important new signal.** The frontier of the
    category is visibly moving from "dashboard that shows me things" toward
-   "agent that watches and nudges (or acts) for me." Lava Finance should
+   "agent that watches and nudges (or acts) for me." Lava Money should
    not try to out-build Rowan's action-taking (that requires being a
    licensed, trusted financial actor with real bank credentials, real
-   liability, and a real AI-agent-with-your-money trust bar Lava Finance
+   liability, and a real AI-agent-with-your-money trust bar Lava Money
    has no basis to clear right now) — but the *shape* of the win, "surface
    an opportunity before I have to go looking for it," is buildable today
    without any agent, any LLM call, or any bank action. That's what
@@ -71,7 +71,7 @@ Checked tonight, current as of Aug 30, 2026:
 No. If anything, the local-first research argues for leaning in *harder* on
 manual/local as a first-class experience (already true) and for being
 honest that "local-first" by itself won't be the headline for long — it has
-to be paired with the design bar, or Lava Finance just becomes "one of the
+to be paired with the design bar, or Lava Money just becomes "one of the
 utilitarian local-first apps," which is a smaller, less differentiated
 market than "the good-looking finance app that also respects your data and
 works on your Android phone."
