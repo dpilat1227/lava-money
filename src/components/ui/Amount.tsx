@@ -6,7 +6,7 @@ import { Text } from './Text';
 
 interface Props {
   amount: number;
-  variant?: 'title' | 'subtitle' | 'body' | 'caption';
+  variant?: 'display' | 'title' | 'subtitle' | 'body' | 'caption';
   showSign?: boolean;
   /** When true, spend (negative) renders muted instead of red -- useful in a
    * plain transaction list where every row being red would just be noise;

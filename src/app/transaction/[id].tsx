@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Amount, Badge, Button, CategoryIcon, Text } from '@/components/ui';
@@ -10,10 +10,16 @@ import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatFullDate } from '@/lib/utils/date';
 
+const ENTRY_SOURCE_LABEL: Record<string, string> = {
+  manual: 'Added by hand',
+  import: 'Imported from CSV',
+  linked: 'From bank connection',
+};
+
 export default function TransactionDetailModal() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { transactions, accounts, categorizeTransaction, setNote } = useFinance();
+  const { transactions, accounts, categorizeTransaction, setNote, deleteTransaction } = useFinance();
   const [pickingCategory, setPickingCategory] = useState(false);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
 
@@ -62,8 +68,9 @@ export default function TransactionDetailModal() {
 
         <View style={styles.detailCard}>
           <DetailRow label="Date" value={formatFullDate(tx.date)} />
-          <DetailRow label="Account" value={account ? `${account.name} •••• ${account.mask}` : '—'} />
+          <DetailRow label="Account" value={account ? `${account.name}${account.source === 'manual' ? '' : ` •••• ${account.mask}`}` : '—'} />
           {account && <DetailRow label="Institution" value={getInstitution(account.institutionId).name} />}
+          {tx.entrySource && <DetailRow label="Source" value={ENTRY_SOURCE_LABEL[tx.entrySource] ?? tx.entrySource} />}
         </View>
 
         <Text variant="caption" color={Colors.text3} style={{ marginTop: Spacing.lg, marginBottom: Spacing.sm }}>
@@ -120,6 +127,27 @@ export default function TransactionDetailModal() {
         <View style={{ marginTop: Spacing.xl }}>
           <Button label="Done" fullWidth onPress={() => router.back()} />
         </View>
+
+        <Pressable
+          onPress={() => {
+            Alert.alert('Delete transaction', `Remove "${tx.merchantName}" from your history?`, [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: () => {
+                  deleteTransaction(tx.id);
+                  router.back();
+                },
+              },
+            ]);
+          }}
+          style={styles.deleteRow}
+        >
+          <Text variant="body" color={Colors.red} weight="semibold">
+            Delete transaction
+          </Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -181,5 +209,12 @@ const styles = StyleSheet.create({
     color: Colors.text1,
     fontSize: 14,
     textAlignVertical: 'top',
+  },
+  deleteRow: {
+    marginTop: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.redSoft,
+    alignItems: 'center',
   },
 });

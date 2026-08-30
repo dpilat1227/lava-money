@@ -1,10 +1,20 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
 
 import { CATEGORIES } from '@/lib/mock/categories';
-import { getInstitution, MOCK_INSTITUTIONS } from '@/lib/mock/institutions';
+import { getInstitution, MANUAL_INSTITUTION, MOCK_INSTITUTIONS } from '@/lib/mock/institutions';
 import { defaultBudgets, generateBankData } from '@/lib/mock/generator';
 import { loadPersistedState, savePersistedState, clearPersistedState } from '@/lib/store/persistence';
-import type { Account, Budget, Category, Institution, RecurringSeries, Transaction } from '@/lib/types';
+import type {
+  Account,
+  Budget,
+  Category,
+  Institution,
+  ManualAccountInput,
+  ManualTransactionInput,
+  RecurringSeries,
+  Transaction,
+} from '@/lib/types';
+import type { ParsedTransactionRow } from '@/lib/utils/csv';
 
 interface FinanceState {
   isHydrated: boolean;
@@ -31,9 +41,32 @@ type Action =
   | { type: 'CATEGORIZE_TRANSACTION'; transactionId: string; categoryId: string }
   | { type: 'SET_NOTE'; transactionId: string; note: string }
   | { type: 'SET_BUDGET'; categoryId: string; monthlyLimit: number }
-  | { type: 'RESET_ALL' };
+  | { type: 'RESET_ALL' }
+  | { type: 'ADD_MANUAL_ACCOUNT'; accountId: string; input: ManualAccountInput }
+  | { type: 'UPDATE_ACCOUNT_BALANCE'; accountId: string; balance: number }
+  | { type: 'ADD_TRANSACTION'; input: ManualTransactionInput }
+  | { type: 'UPDATE_TRANSACTION'; transactionId: string; patch: Partial<Pick<Transaction, 'merchantName' | 'amount' | 'date' | 'categoryId'>> }
+  | { type: 'DELETE_TRANSACTION'; transactionId: string }
+  | { type: 'IMPORT_TRANSACTIONS'; accountId: string; rows: ParsedTransactionRow[] }
+  | { type: 'REFRESH_ACCOUNT'; accountId: string }
+  | { type: 'REFRESH_ALL_LINKED' };
 
 let seedCounter = Date.now();
+let idCounter = 0;
+const nextId = (prefix: string) => `${prefix}-${Date.now()}-${idCounter++}`;
+
+/** Simulated refresh outcome for a linked account -- almost always succeeds,
+ * since there's no real provider to fail against; the small failure chance
+ * exists so "Refresh" doesn't feel fake-perfect and the error-state UI stays
+ * reachable without waiting for the initial random rolls to produce one. A
+ * failed refresh does NOT move `lastSyncedAt` forward -- that timestamp
+ * means "last successful sync," so a failure has to leave it where it was. */
+function simulateRefresh(previousSyncedAt: string): { syncStatus: 'synced' | 'error'; lastSyncedAt: string } {
+  const failed = Math.random() < 0.08;
+  return failed
+    ? { syncStatus: 'error', lastSyncedAt: previousSyncedAt }
+    : { syncStatus: 'synced', lastSyncedAt: new Date().toISOString() };
+}
 
 function reducer(state: FinanceState, action: Action): FinanceState {
   switch (action.type) {
@@ -89,6 +122,95 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     case 'RESET_ALL':
       return { ...initialState, isHydrated: true };
 
+    case 'ADD_MANUAL_ACCOUNT': {
+      const { input } = action;
+      const account: Account = {
+        id: action.accountId,
+        institutionId: MANUAL_INSTITUTION.id,
+        name: input.name.trim() || 'Manual account',
+        mask: '····',
+        type: input.type,
+        balance: Math.round(input.balance * 100) / 100,
+        creditLimit: input.creditLimit,
+        source: 'manual',
+        syncStatus: 'manual',
+        lastSyncedAt: new Date().toISOString(),
+      };
+      const hadManualInstitution = state.institutions.some(i => i.id === MANUAL_INSTITUTION.id);
+      return {
+        ...state,
+        institutions: hadManualInstitution ? state.institutions : [...state.institutions, MANUAL_INSTITUTION],
+        accounts: [...state.accounts, account],
+      };
+    }
+
+    case 'UPDATE_ACCOUNT_BALANCE': {
+      return {
+        ...state,
+        accounts: state.accounts.map(a =>
+          a.id === action.accountId ? { ...a, balance: Math.round(action.balance * 100) / 100, lastSyncedAt: new Date().toISOString() } : a
+        ),
+      };
+    }
+
+    case 'ADD_TRANSACTION': {
+      const { input } = action;
+      const transaction: Transaction = {
+        id: nextId('tx'),
+        accountId: input.accountId,
+        date: input.date,
+        merchantName: input.merchantName.trim() || 'Transaction',
+        rawDescription: input.merchantName.toUpperCase(),
+        amount: Math.round(input.amount * 100) / 100,
+        categoryId: input.categoryId,
+        notes: input.notes,
+        entrySource: 'manual',
+      };
+      return { ...state, transactions: [transaction, ...state.transactions] };
+    }
+
+    case 'UPDATE_TRANSACTION': {
+      return {
+        ...state,
+        transactions: state.transactions.map(t => (t.id === action.transactionId ? { ...t, ...action.patch } : t)),
+      };
+    }
+
+    case 'DELETE_TRANSACTION': {
+      return { ...state, transactions: state.transactions.filter(t => t.id !== action.transactionId) };
+    }
+
+    case 'IMPORT_TRANSACTIONS': {
+      const imported: Transaction[] = action.rows.map(row => ({
+        id: nextId('import'),
+        accountId: action.accountId,
+        date: row.date,
+        merchantName: row.merchantName,
+        rawDescription: row.merchantName.toUpperCase(),
+        amount: row.amount,
+        categoryId: row.amount >= 0 ? 'income' : 'other',
+        entrySource: 'import',
+      }));
+      return { ...state, transactions: [...imported, ...state.transactions] };
+    }
+
+    case 'REFRESH_ACCOUNT': {
+      return {
+        ...state,
+        accounts: state.accounts.map(a => {
+          if (a.id !== action.accountId || a.source !== 'linked') return a;
+          return { ...a, ...simulateRefresh(a.lastSyncedAt) };
+        }),
+      };
+    }
+
+    case 'REFRESH_ALL_LINKED': {
+      return {
+        ...state,
+        accounts: state.accounts.map(a => (a.source === 'linked' ? { ...a, ...simulateRefresh(a.lastSyncedAt) } : a)),
+      };
+    }
+
     default:
       return state;
   }
@@ -103,6 +225,15 @@ interface FinanceContextValue extends FinanceState {
   setNote: (transactionId: string, note: string) => void;
   setBudget: (categoryId: string, monthlyLimit: number) => void;
   resetAll: () => void;
+  /** Returns the new account's id so the caller can navigate straight to it. */
+  addManualAccount: (input: ManualAccountInput) => string;
+  updateAccountBalance: (accountId: string, balance: number) => void;
+  addTransaction: (input: ManualTransactionInput) => void;
+  updateTransaction: (transactionId: string, patch: Partial<Pick<Transaction, 'merchantName' | 'amount' | 'date' | 'categoryId'>>) => void;
+  deleteTransaction: (transactionId: string) => void;
+  importTransactions: (accountId: string, rows: ParsedTransactionRow[]) => void;
+  refreshAccount: (accountId: string) => void;
+  refreshAllLinked: () => void;
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null);
@@ -144,6 +275,18 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         clearPersistedState();
         dispatch({ type: 'RESET_ALL' });
       },
+      addManualAccount: input => {
+        const accountId = nextId('manual');
+        dispatch({ type: 'ADD_MANUAL_ACCOUNT', accountId, input });
+        return accountId;
+      },
+      updateAccountBalance: (accountId, balance) => dispatch({ type: 'UPDATE_ACCOUNT_BALANCE', accountId, balance }),
+      addTransaction: input => dispatch({ type: 'ADD_TRANSACTION', input }),
+      updateTransaction: (transactionId, patch) => dispatch({ type: 'UPDATE_TRANSACTION', transactionId, patch }),
+      deleteTransaction: transactionId => dispatch({ type: 'DELETE_TRANSACTION', transactionId }),
+      importTransactions: (accountId, rows) => dispatch({ type: 'IMPORT_TRANSACTIONS', accountId, rows }),
+      refreshAccount: accountId => dispatch({ type: 'REFRESH_ACCOUNT', accountId }),
+      refreshAllLinked: () => dispatch({ type: 'REFRESH_ALL_LINKED' }),
     }),
     [state]
   );

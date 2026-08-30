@@ -8,25 +8,38 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useUpcomingRecurring, useNetWorthHistory, useNetWorthSummary } from '@/hooks/useFinanceSelectors';
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
-import { isAssetAccount } from '@/lib/types';
+import { isAssetAccount, type Account } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils/currency';
 import { formatFullDate } from '@/lib/utils/date';
+import { needsAttention, presentSyncStatus } from '@/lib/utils/sync';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { accounts } = useFinance();
+  const { accounts, refreshAllLinked } = useFinance();
   const history = useNetWorthHistory(6);
   const summary = useNetWorthSummary();
   const upcoming = useUpcomingRecurring(4);
 
   const assetAccounts = accounts.filter(a => isAssetAccount(a.type));
   const liabilityAccounts = accounts.filter(a => !isAssetAccount(a.type));
+  const attentionCount = accounts.filter(needsAttention).length;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
       <ScreenHeader title="Overview" subtitle={formatFullDate(new Date().toISOString().slice(0, 10))} />
 
       <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.lg }}>
+        {attentionCount > 0 && (
+          <Pressable onPress={refreshAllLinked} style={styles.attentionBanner}>
+            <Text variant="body" weight="semibold" color={Colors.amber}>
+              {attentionCount === 1 ? '1 account needs' : `${attentionCount} accounts need`} attention
+            </Text>
+            <Text variant="caption" color={Colors.text3} style={{ marginTop: 2 }}>
+              Balances may be out of date. Tap to refresh all connections.
+            </Text>
+          </Pressable>
+        )}
+
         <Card>
           <Text variant="caption" color={Colors.text3}>
             Net worth
@@ -67,24 +80,12 @@ export default function HomeScreen() {
         <View>
           <SectionTitle title="Accounts" />
           <View style={{ gap: Spacing.sm, marginTop: Spacing.sm }}>
-            {assetAccounts.map(a => (
-              <AccountRow key={a.id} accountId={a.id} name={a.name} mask={a.mask} balance={a.balance} institutionId={a.institutionId} />
-            ))}
-            {liabilityAccounts.map(a => (
-              <AccountRow
-                key={a.id}
-                accountId={a.id}
-                name={a.name}
-                mask={a.mask}
-                balance={-a.balance}
-                institutionId={a.institutionId}
-                creditLimit={a.creditLimit}
-              />
-            ))}
+            {assetAccounts.map(a => <AccountRow key={a.id} account={a} balance={a.balance} />)}
+            {liabilityAccounts.map(a => <AccountRow key={a.id} account={a} balance={-a.balance} />)}
           </View>
           <Pressable onPress={() => router.push('/link-account')} style={styles.addAccountRow}>
             <Text variant="body" color={Colors.orange} weight="semibold">
-              + Link another account
+              + Add account
             </Text>
           </Pressable>
         </View>
@@ -130,38 +131,38 @@ function SectionTitle({ title }: { title: string }) {
   );
 }
 
-function AccountRow({
-  name,
-  mask,
-  balance,
-  institutionId,
-  creditLimit,
-}: {
-  accountId: string;
-  name: string;
-  mask: string;
-  balance: number;
-  institutionId: string;
-  creditLimit?: number;
-}) {
-  const institution = getInstitution(institutionId);
+function AccountRow({ account, balance }: { account: Account; balance: number }) {
+  const router = useRouter();
+  const institution = getInstitution(account.institutionId);
+  const status = presentSyncStatus(account);
   return (
-    <View style={styles.accountRow}>
+    <Pressable style={({ pressed }) => [styles.accountRow, { opacity: pressed ? 0.8 : 1 }]} onPress={() => router.push(`/account/${account.id}`)}>
       <View style={[styles.institutionDot, { backgroundColor: institution.color }]} />
       <View style={{ flex: 1 }}>
-        <Text variant="body">{name}</Text>
-        <Text variant="micro" color={Colors.text4}>
-          {institution.name} •••• {mask}
-          {creditLimit ? ` · ${formatCurrency(creditLimit, { compact: true })} limit` : ''}
-        </Text>
+        <Text variant="body">{account.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
+          <View style={[styles.statusDot, { backgroundColor: status.color }]} />
+          <Text variant="micro" color={Colors.text4} numberOfLines={1}>
+            {status.label}
+            {account.creditLimit ? ` · ${formatCurrency(account.creditLimit, { compact: true })} limit` : ''}
+          </Text>
+        </View>
       </View>
       <Amount amount={balance} variant="subtitle" neutral />
-    </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg },
+  attentionBanner: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.amberSoft,
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.35)',
+  },
   accountRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -174,6 +175,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border1,
   },
   institutionDot: { width: 10, height: 10, borderRadius: 5 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
   addAccountRow: {
     paddingVertical: Spacing.md,
     alignItems: 'center',

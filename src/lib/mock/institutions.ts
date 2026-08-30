@@ -16,6 +16,20 @@ export const MOCK_INSTITUTIONS: Institution[] = [
   { id: 'ledger-one', name: 'Ledger One', color: Colors.amber },
 ];
 
+/**
+ * Not a bank -- the placeholder "institution" every manually-added account
+ * belongs to, so the rest of the app (which groups accounts by
+ * institutionId) doesn't need a separate code path for accounts that were
+ * never linked to anything. Rendered in the UI as "Manually tracked," never
+ * as if it were a real financial institution.
+ */
+export const MANUAL_INSTITUTION: Institution = {
+  id: 'manual-entry',
+  name: 'Manually tracked',
+  color: Colors.text3,
+};
+
 export function getInstitution(id: string): Institution {
+  if (id === MANUAL_INSTITUTION.id) return MANUAL_INSTITUTION;
   return MOCK_INSTITUTIONS.find(i => i.id === id) ?? MOCK_INSTITUTIONS[0];
 }

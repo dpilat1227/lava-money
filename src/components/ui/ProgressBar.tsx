@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Colors, Radius } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 
 interface Props {
   pct: number; // 0..1+ 

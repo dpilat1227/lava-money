@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Animated, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/ui';
@@ -90,7 +90,11 @@ function ChooseInstitutionStep({
 
 function LinkingStep({ institution, onDone }: { institution: Institution; onDone: () => void }) {
   const [stageIndex, setStageIndex] = useState(0);
-  const spin = useRef(new Animated.Value(0)).current;
+  // A plain useState (never set again) instead of useRef -- it needs to be a
+  // stable Animated.Value across renders without itself triggering one, but
+  // reading `.current` off a ref during render trips the stricter
+  // react-hooks lint rules that ship with React 19's compiler.
+  const [spin] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const loop = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 900, useNativeDriver: true }));

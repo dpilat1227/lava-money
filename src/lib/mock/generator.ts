@@ -13,9 +13,32 @@
  * pass (grouping by merchant + amount tolerance + interval) belongs in the
  * adapter layer once real transactions exist to detect patterns in.
  */
-import type { Account, AccountType, RecurringCadence, RecurringSeries, Transaction } from '@/lib/types';
+import type { Account, AccountType, RecurringCadence, RecurringSeries, SyncStatus, Transaction } from '@/lib/types';
 import { addDays, addMonths, isoDate, startOfMonth } from '@/lib/utils/date';
 import { makeRng, pick, randFloat, randInt } from '@/lib/utils/rng';
+
+/**
+ * Rolls a plausible connection-health state for a newly "linked" account.
+ * There's no real bank connection behind this yet, so this exists purely to
+ * make the sync-status UI (badges, the "needs attention" banner, the
+ * refresh action) demonstrable from a fresh install, across a realistic mix
+ * of states -- not to simulate an actual outage. A real provider adapter
+ * would set these fields from its own webhook/poll results instead.
+ */
+function rollSyncState(rng: () => number): { syncStatus: SyncStatus; lastSyncedAt: string } {
+  const roll = rng();
+  const now = Date.now();
+  if (roll < 0.7) {
+    const minutesAgo = randInt(rng, 1, 240);
+    return { syncStatus: 'synced', lastSyncedAt: new Date(now - minutesAgo * 60_000).toISOString() };
+  }
+  if (roll < 0.92) {
+    const daysAgo = randInt(rng, 2, 6);
+    return { syncStatus: 'stale', lastSyncedAt: new Date(now - daysAgo * 86_400_000).toISOString() };
+  }
+  const daysAgo = randInt(rng, 9, 21);
+  return { syncStatus: 'error', lastSyncedAt: new Date(now - daysAgo * 86_400_000).toISOString() };
+}
 
 const MONTHS_BACK = 6;
 
@@ -65,7 +88,8 @@ export function generateBankData(institutionId: string, seed: number): Generated
     mask: String(randInt(rng, 1000, 9999)).slice(-4),
     type: 'checking',
     balance: 0, // filled in after transactions are generated
-    lastSyncedAt: new Date().toISOString(),
+    source: 'linked',
+    ...rollSyncState(rng),
   };
 
   const savings: Account | null = hasSavings
@@ -77,7 +101,8 @@ export function generateBankData(institutionId: string, seed: number): Generated
         type: 'savings',
         balance: 0,
         apy: randFloat(rng, 3.8, 4.9, 1),
-        lastSyncedAt: new Date().toISOString(),
+        source: 'linked',
+        ...rollSyncState(rng),
       }
     : null;
 
@@ -91,7 +116,8 @@ export function generateBankData(institutionId: string, seed: number): Generated
         type: 'credit_card',
         balance: 0,
         creditLimit,
-        lastSyncedAt: new Date().toISOString(),
+        source: 'linked',
+        ...rollSyncState(rng),
       }
     : null;
 

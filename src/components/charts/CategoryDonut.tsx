@@ -30,14 +30,15 @@ export function CategoryDonut({ data, centerLabel }: Props) {
     );
   }
 
-  let cursor = 0;
-  const segments = data.map(d => {
-    const fraction = d.total / total;
-    const dashLength = fraction * CIRCUMFERENCE;
-    const offset = cursor;
-    cursor += dashLength;
-    return { ...d, dashLength, offset, color: getCategory(d.categoryId).color };
-  });
+  const segments = data.reduce<{ categoryId: string; total: number; dashLength: number; offset: number; color: string }[]>(
+    (acc, d) => {
+      const previous = acc[acc.length - 1];
+      const offset = previous ? previous.offset + previous.dashLength : 0;
+      const dashLength = (d.total / total) * CIRCUMFERENCE;
+      return [...acc, { ...d, dashLength, offset, color: getCategory(d.categoryId).color }];
+    },
+    []
+  );
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>

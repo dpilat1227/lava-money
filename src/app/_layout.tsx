@@ -62,6 +62,7 @@ function RootNavigator() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="link-account" options={{ presentation: 'modal' }} />
       <Stack.Screen name="transaction/[id]" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="account/[id]" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }
