@@ -133,3 +133,45 @@ See `docs/HANDOFF.md` for the "what actually shipped" writeup once done;
 this doc is the reasoning, that doc is the receipt. Build order: app icon →
 custom categories → recurring detection → rules-based categorizer → Insights
 surface → verify/docs/commit.
+
+## Addendum — night 4: the three open decisions, resolved
+
+Three items had been carried forward across nights 1–3 as "needs your
+input" — they got decided tonight instead of carried forward a fourth time:
+
+1. **Real bank data: SimpleFIN-style read-only aggregator, not Plaid, if/when
+   this ever gets a real connection.** Rationale: Plaid is the industry
+   default, but it's a heavier trust ask (broad account access, opaque to
+   the end user) that sits awkwardly against a data-ownership identity built
+   on "bank-linking is optional, and what data-access it does have should
+   be legible." A SimpleFIN-style protocol — read-only by design, the user
+   grants access through their own bank/aggregator token rather than Lava
+   Money holding broad delegated credentials — is the closer fit, and (per
+   night 3's research) is exactly the pattern several 2026 local-first
+   competitors already use for this reason. This does **not** mean building
+   a live SimpleFIN integration tonight — no real SimpleFIN credentials
+   exist for a demo app, and the mock `generateBankData()` path stays the
+   *only* "linked" data source for the foreseeable future either way. What
+   this decision actually does: it fixes the shape of `BankProvider` (see
+   `lib/providers/BankProvider.ts`, stubbed tonight) so that when/if a real
+   connection ever gets built, it's built once, against the right protocol,
+   instead of Plaid-shaped scaffolding that would need reworking later.
+2. **Impause-style spend-pause: a universal layer, not manual-entry-specific.**
+   It surfaces for any transaction landing in a discretionary category
+   (Dining Out, Shopping, Entertainment, Subscriptions) — manual, imported,
+   or linked — rather than only for hand-entered spend. See
+   `lib/utils/impause.ts` and `components/impause/PausePrompt.tsx`. Because
+   linked/imported transactions arrive in historical batches (there's no
+   real "a transaction just posted" event without a real bank connection),
+   the *proactive* pop-up only fires for the realistic "happening right
+   now" moments — a manual add, or opening a not-yet-acknowledged
+   discretionary transaction's detail page for the first time — rather than
+   firing 40 times in a row after linking a demo bank with six months of
+   history. That's the "universal" part: every discretionary transaction
+   gets one, eventually, regardless of source; it just doesn't interrupt a
+   bulk backfill to do it.
+3. **The categorization-suggestions banner moved from Settings to Home**,
+   next to the existing "N accounts need attention" banner — it's an
+   actionable nudge, not a settings-page fact, and reads better with the
+   other "something needs a look" surface than buried under category
+   management.

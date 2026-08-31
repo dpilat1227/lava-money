@@ -1,3 +1,112 @@
+# Handoff — night 4: the three open decisions get resolved
+
+Picked up exactly where night 3 left off: "continue onward" on the two open
+product decisions (Impause UX, real-bank-data path) plus the banner
+placement question, all three of which had been carried forward across
+nights 1–3 as "needs your input." All three got decided (with you, live)
+and built tonight instead of carried forward a fourth time. See
+`docs/STRATEGY.md`'s "Addendum — night 4" for the reasoning; this is the
+receipt. Verified by `npx tsc --noEmit` clean, `npx expo lint` clean, and
+Playwright click-throughs (manual dining transaction → pause prompt with
+correct "Nth purchase" count and running total; setting a budget then
+triggering the pause again → progress bar flips to over-budget red at
+110%; a linked, current-month Subscriptions transaction opened for the
+first time → retroactive pause; reopening it → doesn't show a second time;
+Home screen renders correctly with the moved suggestion banner).
+
+## What's done tonight
+
+- **Impause v1.1, resolved as a universal layer, discretionary-category
+  trigger.** New `lib/utils/impause.ts` + `components/impause/PausePrompt.tsx`:
+  a one-time, dismissible "spend pause" reflection card — never a
+  blocking gate, since this app has no way to see a purchase before it
+  happens — showing "Your Nth [Category] purchase this month — $X of $Y
+  spent so far" plus a budget progress bar (or a "Set a budget" link if
+  none exists yet). Discretionary categories: Dining Out, Shopping,
+  Entertainment, Subscriptions. Fires in two places, covering manual and
+  linked/imported transactions alike without spamming a bulk backfill:
+  - **Immediately** after a manual transaction is added in a discretionary
+    category (`account/[id].tsx`'s `AddTransactionSheet` → `onAdded`).
+  - **Retroactively, once**, the first time a not-yet-acknowledged
+    discretionary transaction from the *current month* is opened from its
+    detail screen (`transaction/[id].tsx`) — scoped to the current month
+    specifically so linking a demo bank with months of history doesn't
+    queue up dozens of pauses for old transactions. Acknowledgment
+    (`acknowledgedPauseIds`, new persisted array in `FinanceContext`) means
+    it never shows twice for the same transaction.
+- **Real bank data: SimpleFIN-style, not Plaid, if this ever gets built.**
+  New `lib/providers/BankProvider.ts` — a design-only interface stub, not
+  wired to anything (`generateBankData()` remains the only "linked" data
+  source). Fixes the *shape* of a future real connection now, so it isn't
+  invented under deadline pressure later or built Plaid-shaped by default.
+  `lib/types.ts`'s header comments updated to stop implying a Plaid
+  commitment.
+- **"N suggestions to review" banner moved from Settings to Home**, next
+  to the existing "N accounts need attention" banner — same visual
+  treatment (orange vs. amber), same destination (`/review-categories`).
+  Settings' Categories section lost the banner but kept category
+  add/delete.
+
+## Decisions made without you tonight (flag anything you'd reverse)
+
+1. **The pause is framed as "reflect," never "block."** There's no version
+   of this app that sees a transaction before it posts (no card-network
+   integration, ever, regardless of the Plaid/SimpleFIN decision) — so an
+   Impause-style "wait 10 seconds before you buy" is not something this
+   product can honestly build. What ships instead is a brief "here's where
+   this category stands" moment right after the fact.
+2. **Retroactive pauses are scoped to the current month only.** Otherwise
+   "universal" would mean linking a demo bank instantly queues up a pause
+   for every discretionary transaction in its multi-month backfill, which
+   is spam, not a nudge. A four-month-old backfilled coffee run isn't
+   useful to reflect on regardless.
+3. **Custom categories are never discretionary**, even though users could
+   invent a "Takeout" or "Impulse buys" category that obviously should be.
+   No signal exists to guess what a user-created category means to them;
+   guessing wrong (pausing on someone's "Kids" category) reads as noise,
+   not a nudge. Revisit if custom categories ever get a "treat as
+   discretionary" toggle.
+4. **`BankProvider.ts` is a stub, not a start on a real integration.** No
+   real SimpleFIN credentials exist for a demo app, and building against
+   an untested guess at the real protocol's exact request/response shapes
+   would be worse than not building it yet. What it fixes is intent, not
+   code: the interface commits to read-only, token-based access instead of
+   Plaid's broader delegated-access model, so the *next* real build starts
+   from the right assumptions.
+5. Carried forward from nights 1–3 and still true: NativeTabs, onboarding
+   isn't a router route, fictional institution names, manual balances
+   don't follow transactions, budgets apply going-forward only, dark-only,
+   fixed category list plus user-added custom ones.
+
+## Open questions for you
+
+- **Should custom categories get a "treat as discretionary" toggle**, so
+  Impause pauses can extend to categories the fixed list doesn't cover
+  (Takeout, Impulse buys, etc.)? Not built tonight — see decision #3 above.
+- **Does the pause ever want a per-category "stop showing me this" opt-out?**
+  Right now it's always-on for the four discretionary categories; someone
+  who dines out five times a week doesn't need a reflection card every
+  single time. No data yet on whether that's actually annoying in practice
+  or just a hypothetical — worth watching before building a dismiss-forever
+  control preemptively.
+- **When (if ever) does `BankProvider.ts` become a real integration?** Not
+  urgent — the mock generator remains the only data source either way —
+  but worth deciding once there's a reason to prioritize it (e.g. a real
+  beta user who wants their real accounts).
+
+## Where to start next
+
+Run `npx expo start`, add a manual transaction in Dining Out/Shopping/
+Entertainment/Subscriptions to see the pause prompt, set a budget for that
+category and add another to see the progress bar flip color at 100%+, then
+link a demo bank and open a current-month Subscriptions/Dining transaction
+from Activity to see the retroactive version. Home should show the moved
+suggestion banner (import a CSV with an unrecognized merchant to trigger
+one). Everything in this doc should be visibly true within about five
+minutes.
+
+---
+
 # Handoff — night 3: strategy audit + Insights, no reversal
 
 See `docs/STRATEGY.md` for the full audit (written first, per instruction,
@@ -90,21 +199,16 @@ demo bank with realistic subscription/bill data).
 
 ## Open questions for you
 
-- **Impause-style spend-pause interaction** — still deferred to v1.1 per
-  our agreement, still needs your design input (trigger condition, feel,
-  dismissibility) before building. Tonight's Insights card covers the
-  "proactive surfacing" value in the meantime without that decision.
-- **Real bank data, ever, or stay demo/portfolio, or a lighter-trust
-  read-only aggregator (SimpleFIN-style) instead of Plaid** — carried
-  forward again; the strategy doc's research raised the stakes on
-  deciding deliberately (multiple 2026 local-first competitors use exactly
-  that lighter-trust pattern) but didn't resolve it. Still the single
-  biggest undecided fork in the roadmap.
-- **Does the "N suggestions to review" banner belong on Settings long-term**,
-  or would it read better as a Home banner (next to the existing "N accounts
-  need attention" one) since it's more of an actionable nudge than a
-  settings-page fact? Shipped on Settings tonight because that's where
-  category management already lives; easy to move if it reads as buried.
+All three resolved night 4 — see that section at the top of this file and
+`docs/STRATEGY.md`'s addendum. Left here for the historical record:
+
+- ~~Impause-style spend-pause interaction~~ → universal layer,
+  discretionary-category trigger, built night 4.
+- ~~Real bank data, ever, or stay demo/portfolio, or a lighter-trust
+  read-only aggregator (SimpleFIN-style) instead of Plaid~~ → SimpleFIN-
+  style, decided night 4 (not yet built — see `lib/providers/BankProvider.ts`).
+- ~~Does the "N suggestions to review" banner belong on Settings long-term,
+  or Home~~ → moved to Home, night 4.
 
 ## Where to start next
 
@@ -113,9 +217,7 @@ bank"), then check Trends for the new Recurring & subscriptions card, and
 Settings → Categories for custom-category add/delete and the suggestion
 review flow (import a CSV with an unrecognized-but-rule-matchable merchant
 like "STARBUCKS" to see a fresh suggestion appear). Everything in this doc
-should be visibly true within about five minutes. From there, the Impause
-interaction design and the real-bank-data fork above are the two decisions
-most worth making before the next build session.
+should be visibly true within about five minutes.
 
 ---
 
@@ -222,12 +324,9 @@ Settings, all four other tabs).
 
 ## Open questions for you
 
-- **Does "Impause-style behavior" (v1.1, per our plan) want to hook into
-  the manual-entry flow specifically** (e.g., a "pause" moment when adding
-  a discretionary-category transaction by hand) or does it want to be its
-  own thing layered on top of both linked and manual transactions equally?
-  Worth deciding before starting that build so it doesn't get bolted onto
-  whichever path happens to exist first.
+- ~~Does "Impause-style behavior" want to hook into manual-entry
+  specifically, or layer on top of both linked and manual equally?~~ →
+  universal layer, resolved and built night 4.
 - **App icon / splash graphic** — still the default Expo placeholder, per
   night 1's open question. Untouched again tonight; still the most visible
   remaining "this looks unfinished" signal if you screenshot the app cold.

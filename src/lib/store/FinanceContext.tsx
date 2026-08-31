@@ -26,6 +26,9 @@ interface FinanceState {
   transactions: Transaction[];
   budgets: Budget[];
   customCategories: Category[];
+  /** See lib/utils/impause.ts / PersistedState -- transaction ids that have
+   * already shown their one-time "spend pause" reflection card. */
+  acknowledgedPauseIds: string[];
 }
 
 const initialState: FinanceState = {
@@ -35,6 +38,7 @@ const initialState: FinanceState = {
   transactions: [],
   budgets: [],
   customCategories: [],
+  acknowledgedPauseIds: [],
 };
 
 type Action =
@@ -47,14 +51,15 @@ type Action =
   | { type: 'RESET_ALL' }
   | { type: 'ADD_MANUAL_ACCOUNT'; accountId: string; input: ManualAccountInput }
   | { type: 'UPDATE_ACCOUNT_BALANCE'; accountId: string; balance: number }
-  | { type: 'ADD_TRANSACTION'; input: ManualTransactionInput }
+  | { type: 'ADD_TRANSACTION'; transactionId: string; input: ManualTransactionInput }
   | { type: 'UPDATE_TRANSACTION'; transactionId: string; patch: Partial<Pick<Transaction, 'merchantName' | 'amount' | 'date' | 'categoryId'>> }
   | { type: 'DELETE_TRANSACTION'; transactionId: string }
   | { type: 'IMPORT_TRANSACTIONS'; accountId: string; rows: ParsedTransactionRow[] }
   | { type: 'REFRESH_ACCOUNT'; accountId: string }
   | { type: 'REFRESH_ALL_LINKED' }
   | { type: 'ADD_CUSTOM_CATEGORY'; category: Category }
-  | { type: 'DELETE_CUSTOM_CATEGORY'; categoryId: string };
+  | { type: 'DELETE_CUSTOM_CATEGORY'; categoryId: string }
+  | { type: 'ACKNOWLEDGE_PAUSE'; transactionId: string };
 
 let seedCounter = Date.now();
 let idCounter = 0;
@@ -163,7 +168,7 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     case 'ADD_TRANSACTION': {
       const { input } = action;
       const transaction: Transaction = {
-        id: nextId('tx'),
+        id: action.transactionId,
         accountId: input.accountId,
         date: input.date,
         merchantName: input.merchantName.trim() || 'Transaction',
@@ -230,6 +235,11 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       return { ...state, customCategories: [...state.customCategories, action.category] };
     }
 
+    case 'ACKNOWLEDGE_PAUSE': {
+      if (state.acknowledgedPauseIds.includes(action.transactionId)) return state;
+      return { ...state, acknowledgedPauseIds: [...state.acknowledgedPauseIds, action.transactionId] };
+    }
+
     case 'DELETE_CUSTOM_CATEGORY': {
       // Reassign anything pointing at the deleted category to "other" and
       // drop its budget row, rather than leaving dangling categoryIds that
@@ -272,7 +282,11 @@ interface FinanceContextValue extends FinanceState {
   /** Returns the new account's id so the caller can navigate straight to it. */
   addManualAccount: (input: ManualAccountInput) => string;
   updateAccountBalance: (accountId: string, balance: number) => void;
-  addTransaction: (input: ManualTransactionInput) => void;
+  /** Returns the new transaction's id -- callers (the manual add-transaction
+   * sheet) need it to build a "spend pause" prompt for the exact row just
+   * created, not just "the newest transaction," which could race against
+   * something else touching state first. */
+  addTransaction: (input: ManualTransactionInput) => string;
   updateTransaction: (transactionId: string, patch: Partial<Pick<Transaction, 'merchantName' | 'amount' | 'date' | 'categoryId'>>) => void;
   deleteTransaction: (transactionId: string) => void;
   importTransactions: (accountId: string, rows: ParsedTransactionRow[]) => void;
@@ -282,6 +296,7 @@ interface FinanceContextValue extends FinanceState {
    * existing category (case-insensitive) and nothing was created. */
   addCustomCategory: (input: CustomCategoryInput) => string | null;
   deleteCustomCategory: (categoryId: string) => void;
+  acknowledgePause: (transactionId: string) => void;
 }
 
 const FinanceContext = createContext<FinanceContextValue | null>(null);
@@ -299,6 +314,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
           transactions: [],
           budgets: [],
           customCategories: [],
+          acknowledgedPauseIds: [],
         },
       });
     });
@@ -312,8 +328,17 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       transactions: state.transactions,
       budgets: state.budgets,
       customCategories: state.customCategories,
+      acknowledgedPauseIds: state.acknowledgedPauseIds,
     });
-  }, [state.isHydrated, state.institutions, state.accounts, state.transactions, state.budgets, state.customCategories]);
+  }, [
+    state.isHydrated,
+    state.institutions,
+    state.accounts,
+    state.transactions,
+    state.budgets,
+    state.customCategories,
+    state.acknowledgedPauseIds,
+  ]);
 
   const recurringSeries = useMemo(
     () => detectRecurringSeries(state.transactions, state.accounts),
@@ -342,7 +367,11 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         return accountId;
       },
       updateAccountBalance: (accountId, balance) => dispatch({ type: 'UPDATE_ACCOUNT_BALANCE', accountId, balance }),
-      addTransaction: input => dispatch({ type: 'ADD_TRANSACTION', input }),
+      addTransaction: input => {
+        const transactionId = nextId('tx');
+        dispatch({ type: 'ADD_TRANSACTION', transactionId, input });
+        return transactionId;
+      },
       updateTransaction: (transactionId, patch) => dispatch({ type: 'UPDATE_TRANSACTION', transactionId, patch }),
       deleteTransaction: transactionId => dispatch({ type: 'DELETE_TRANSACTION', transactionId }),
       importTransactions: (accountId, rows) => dispatch({ type: 'IMPORT_TRANSACTIONS', accountId, rows }),
@@ -363,6 +392,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         return id;
       },
       deleteCustomCategory: categoryId => dispatch({ type: 'DELETE_CUSTOM_CATEGORY', categoryId }),
+      acknowledgePause: transactionId => dispatch({ type: 'ACKNOWLEDGE_PAUSE', transactionId }),
     }),
     [state, recurringSeries]
   );

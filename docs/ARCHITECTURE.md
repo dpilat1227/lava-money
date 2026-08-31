@@ -47,7 +47,13 @@ src/
     charts/             NetWorthChart, CategoryDonut, FlowBarChart
     insights/           RecurringInsightsCard -- the Trends-screen "recurring
                         & subscriptions" surface (see below)
+    impause/            PausePrompt -- the "spend pause" reflection card (see
+                        "Impause: the spend-pause reflection layer" below)
   lib/
+    providers/
+      BankProvider.ts     Design-only interface stub for a future real bank
+                        connection (SimpleFIN-shaped, not Plaid) -- nothing
+                        imports this yet. See "the mock-data seam" below.
     types.ts            Core data model (Account, Transaction, Category, ...)
                         including AccountSource ('linked' | 'manual'),
                         SyncStatus ('synced' | 'stale' | 'error' | 'manual'),
@@ -60,11 +66,14 @@ src/
                         updateAccountBalance, addTransaction,
                         updateTransaction, deleteTransaction,
                         importTransactions, refreshAccount, refreshAllLinked,
-                        addCustomCategory, deleteCustomCategory.
+                        addCustomCategory, deleteCustomCategory,
+                        acknowledgePause.
                         `recurringSeries` and `categories` (fixed + custom,
                         merged) are computed values on the context, not
                         persisted state -- see "recurring detection" and
-                        "custom categories" below.
+                        "custom categories" below. `acknowledgedPauseIds` IS
+                        persisted (see "Impause" below) -- unlike those two,
+                        it's not derivable from other state.
       persistence.ts      AsyncStorage read/write
     mock/
       generator.ts        Produces ~6 months of accounts + transactions for
@@ -103,6 +112,9 @@ src/
                           `RecurringSeries[]` into monthly-equivalent
                           subscription/bill totals and due-soon/overdue
                           status flags for `RecurringInsightsCard`
+      impause.ts          Discretionary-category detection + "spend pause"
+                          context/message building for `PausePrompt`. See
+                          "Impause" below.
   hooks/
     useFinanceSelectors.ts  Derived data: net worth history, budget progress,
                             monthly income/expense, grouped transactions,
@@ -129,10 +141,20 @@ transaction list) only depends on those shapes — `Account`, `Transaction`,
 `Category`, `RecurringSeries`. Nothing in a screen or hook knows or cares
 that the data came from `lib/mock/generator.ts`.
 
-To wire in a real provider (Plaid, Teller, Finicity, etc.) later:
+**Decision (docs/STRATEGY.md, night 4): if a real provider ever gets built,
+it's SimpleFIN-style read-only, not Plaid** — a lighter trust ask that fits
+the data-ownership identity better. `lib/providers/BankProvider.ts` is a
+design-only stub of that shape (`connect(token)` / `refresh` / `disconnect`,
+no institution-picker method, since SimpleFIN's model is "user brings a
+token from their own bank/aggregator," not a Plaid Link-style picker).
+Nothing imports it yet — this fixes intent for later, not a build tonight.
 
-1. Write an adapter that calls the real API and maps its response into
-   `Account[]` / `Transaction[]` matching `lib/types.ts`.
+To wire in a real provider later:
+
+1. Implement `BankProvider` for real (or, if the SimpleFIN decision ever
+   changes, write a new interface for Plaid/Teller/Finicity-style delegated
+   access instead — don't force a Plaid adapter through the SimpleFIN-shaped
+   interface, they're different trust models for a reason).
 2. **Watch the sign convention.** Plaid returns positive amounts for money
    leaving an account, negative for money coming in — backwards from what
    you'd want to render directly. This app uses the intuitive convention
@@ -273,6 +295,46 @@ read on Rocket Money's Rowan/ChatGPT-finance trend — same value (surface
 something before the user has to notice it themselves), deliberately none
 of the risk (no agent, no LLM call, no bank-action capability).
 
+## Impause: the spend-pause reflection layer
+
+The v1.1 Impause-style feature, resolved night 4 (`docs/STRATEGY.md`
+addendum) as a universal layer over discretionary spend, not a
+manual-entry-only nudge. Framed deliberately as "reflect," never "block" —
+this app has no way to see a purchase before it happens, so a real
+Impause-style purchase-time pause isn't something it can honestly build.
+
+- `lib/utils/impause.ts`: `isDiscretionaryCategory()` checks against a
+  fixed set (Dining Out, Shopping, Entertainment, Subscriptions — custom
+  categories are never discretionary, see the "decisions" list in
+  `docs/HANDOFF.md`'s night-4 entry for why). `buildPauseContext()` computes
+  this-month occurrence count + total spend for a transaction's category
+  (including that transaction), plus budget/percent-of-budget if one
+  exists. `pauseMessage()` turns that into the plain-language line the card
+  shows — same "explain it, don't just flag it" philosophy as the
+  categorizer's `reason` field.
+- `components/impause/PausePrompt.tsx`: the actual card (category icon,
+  message, budget progress bar if applicable, "Got it" / optional "Set a
+  budget" link). One-time and dismissible — `onDismiss` is the only way it
+  closes; there's no snooze or "remind me later."
+- Two trigger points, both in existing screens rather than a new global
+  listener, since there's no real "a transaction just posted" event without
+  a real bank connection:
+  - `app/account/[id].tsx`'s `AddTransactionSheet` calls `onAdded(tx)`
+    right after a manual transaction is created; the parent
+    (`AccountDetailModal`) checks `isPauseEligible()` and shows the prompt
+    immediately if so. This is the only "happening right now" moment the
+    app actually has.
+  - `app/transaction/[id].tsx` checks `shouldShowRetroactivePause()` on
+    every render — eligible, not yet acknowledged, *and* dated in the
+    current month — so opening an old linked/imported transaction from a
+    demo bank's multi-month backfill never triggers one, but this month's
+    Hulu charge does the first time you look at it.
+- `acknowledgedPauseIds: string[]` on `FinanceContext`/persisted state is
+  the only reason a transaction's pause doesn't reappear on the next visit.
+  It's an allow-list of "already shown," not a computed value — unlike
+  `recurringSeries`/`categories`, there's no other state it could be
+  derived from.
+
 ## Known limitations (deliberate, for an MVP)
 
 - No light mode. LavaMesh itself has no light mode; matching that was a
@@ -313,3 +375,8 @@ of the risk (no agent, no LLM call, no bank-action capability).
 - Export writes to `expo-file-system/legacy`'s cache directory and hands
   off to `expo-sharing`, or on web triggers a browser download — there's no
   "export history" or in-app confirmation beyond the OS share sheet itself.
+- The Impause "spend pause" (see above) is always-on for its four
+  discretionary categories, with no per-category or global opt-out. There's
+  no usage data yet on whether that reads as helpful or annoying at real
+  usage frequency (someone dining out daily would see one every day) — see
+  the open question in `docs/HANDOFF.md`'s night-4 entry.

@@ -6,15 +6,17 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PausePrompt } from '@/components/impause/PausePrompt';
 import { Amount, Button, CategoryIcon, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { findCategory } from '@/lib/mock/categories';
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
-import { isAssetAccount } from '@/lib/types';
+import { isAssetAccount, type Transaction } from '@/lib/types';
 import { parseTransactionsCsv, type ParsedTransactionRow } from '@/lib/utils/csv';
 import { formatCurrency } from '@/lib/utils/currency';
 import { formatDayLabel } from '@/lib/utils/date';
+import { buildPauseContext, isPauseEligible, type PauseContext } from '@/lib/utils/impause';
 import { presentSyncStatus } from '@/lib/utils/sync';
 
 type SheetName = 'none' | 'add-transaction' | 'edit-balance' | 'csv-preview';
@@ -26,14 +28,17 @@ export default function AccountDetailModal() {
     accounts,
     transactions,
     categories,
+    budgets,
     unlinkAccount,
     refreshAccount,
     importTransactions,
+    acknowledgePause,
   } = useFinance();
   const [sheet, setSheet] = useState<SheetName>('none');
   const [refreshing, setRefreshing] = useState(false);
   const [csvPreview, setCsvPreview] = useState<{ fileName: string; rows: ParsedTransactionRow[]; warnings: string[] } | null>(null);
   const [importing, setImporting] = useState(false);
+  const [pausePrompt, setPausePrompt] = useState<{ transactionId: string; context: PauseContext } | null>(null);
 
   const account = accounts.find(a => a.id === id);
   if (!account) {
@@ -103,6 +108,16 @@ export default function AccountDetailModal() {
       setCsvPreview(null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }, 250);
+  };
+
+  const handleTransactionAdded = (tx: Transaction) => {
+    if (!isPauseEligible(tx)) return;
+    const category = findCategory(categories, tx.categoryId);
+    // `tx` isn't in `transactions` yet (state hasn't re-rendered from the
+    // dispatch inside addTransaction()) -- splice it in ourselves so the
+    // month total/occurrence count include the transaction that just
+    // triggered this prompt.
+    setPausePrompt({ transactionId: tx.id, context: buildPauseContext(tx, [...transactions, tx], budgets, category) });
   };
 
   const confirmUnlink = () => {
@@ -226,7 +241,7 @@ export default function AccountDetailModal() {
       </ScrollView>
 
       {sheet === 'add-transaction' && (
-        <AddTransactionSheet accountId={account.id} onClose={() => setSheet('none')} />
+        <AddTransactionSheet accountId={account.id} onClose={() => setSheet('none')} onAdded={handleTransactionAdded} />
       )}
       {sheet === 'edit-balance' && (
         <EditBalanceSheet account={account} onClose={() => setSheet('none')} />
@@ -240,6 +255,15 @@ export default function AccountDetailModal() {
             setCsvPreview(null);
           }}
           onConfirm={confirmImport}
+        />
+      )}
+      {pausePrompt && (
+        <PausePrompt
+          context={pausePrompt.context}
+          onDismiss={() => {
+            acknowledgePause(pausePrompt.transactionId);
+            setPausePrompt(null);
+          }}
         />
       )}
     </SafeAreaView>
@@ -260,7 +284,15 @@ function decodeBase64(base64: string): string {
   }
 }
 
-function AddTransactionSheet({ accountId, onClose }: { accountId: string; onClose: () => void }) {
+function AddTransactionSheet({
+  accountId,
+  onClose,
+  onAdded,
+}: {
+  accountId: string;
+  onClose: () => void;
+  onAdded: (tx: Transaction) => void;
+}) {
   const { addTransaction, expenseCategories } = useFinance();
   const [merchantName, setMerchantName] = useState('');
   const [amount, setAmount] = useState('');
@@ -326,12 +358,25 @@ function AddTransactionSheet({ accountId, onClose }: { accountId: string; onClos
           fullWidth
           disabled={!isValid}
           onPress={() => {
-            addTransaction({
+            const date = new Date().toISOString().slice(0, 10);
+            const amount = isSpend ? -Math.abs(amountNumber) : Math.abs(amountNumber);
+            const finalCategoryId = isSpend ? categoryId : 'income';
+            const transactionId = addTransaction({
               accountId,
-              date: new Date().toISOString().slice(0, 10),
+              date,
               merchantName: merchantName.trim(),
-              amount: isSpend ? -Math.abs(amountNumber) : Math.abs(amountNumber),
-              categoryId: isSpend ? categoryId : 'income',
+              amount,
+              categoryId: finalCategoryId,
+            });
+            onAdded({
+              id: transactionId,
+              accountId,
+              date,
+              merchantName: merchantName.trim() || 'Transaction',
+              rawDescription: merchantName.trim().toUpperCase(),
+              amount,
+              categoryId: finalCategoryId,
+              entrySource: 'manual',
             });
             onClose();
           }}

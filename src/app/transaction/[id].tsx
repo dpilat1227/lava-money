@@ -3,12 +3,14 @@ import React, { useState } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PausePrompt } from '@/components/impause/PausePrompt';
 import { Amount, Badge, Button, CategoryIcon, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { findCategory } from '@/lib/mock/categories';
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatFullDate } from '@/lib/utils/date';
+import { buildPauseContext, shouldShowRetroactivePause } from '@/lib/utils/impause';
 
 const ENTRY_SOURCE_LABEL: Record<string, string> = {
   manual: 'Added by hand',
@@ -19,7 +21,18 @@ const ENTRY_SOURCE_LABEL: Record<string, string> = {
 export default function TransactionDetailModal() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { transactions, accounts, categories, expenseCategories, categorizeTransaction, setNote, deleteTransaction } = useFinance();
+  const {
+    transactions,
+    accounts,
+    categories,
+    expenseCategories,
+    budgets,
+    acknowledgedPauseIds,
+    categorizeTransaction,
+    setNote,
+    deleteTransaction,
+    acknowledgePause,
+  } = useFinance();
   const [pickingCategory, setPickingCategory] = useState(false);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
 
@@ -158,6 +171,13 @@ export default function TransactionDetailModal() {
           </Text>
         </Pressable>
       </ScrollView>
+
+      {shouldShowRetroactivePause(tx, acknowledgedPauseIds) && (
+        <PausePrompt
+          context={buildPauseContext(tx, transactions, budgets, category)}
+          onDismiss={() => acknowledgePause(tx.id)}
+        />
+      )}
     </SafeAreaView>
   );
 }

@@ -42,13 +42,19 @@ it's best evaluated on an actual simulator/device rather than the web preview
 - **Home** — net worth, a 6-month trend chart, account balances (each with
   a sync-status line — "Synced 2h ago," "Manual · updated by you," "Stale,"
   "Connection issue"), a "needs attention" banner when a linked account's
-  sync has gone stale or failed, upcoming recurring bills.
+  sync has gone stale or failed, a "category suggestions to review" banner
+  when the categorizer has ideas, upcoming recurring bills.
 - **Account detail** (`/account/[id]`) — balance, sync status with a
   refresh action (linked) or an inline balance editor (manual), and for
   manual accounts: **+ Add transaction** (a real hand-entry form) and
   **Import CSV** (a real file picker + parser that auto-detects date/
   merchant/amount columns, including separate debit/credit columns, and
-  shows a preview before committing).
+  shows a preview before committing). Adding a transaction in a
+  discretionary category (Dining Out, Shopping, Entertainment,
+  Subscriptions) surfaces a one-time **"spend pause"** reflection card —
+  this month's spend in that category so far, and budget progress if
+  you've set one. Same card appears the first time you open an existing
+  discretionary transaction from this month, linked or not.
 - **Activity** — every transaction, grouped by day, searchable, tap through
   to a detail view with an editable category, a note field, a source tag
   (linked / manual / imported), and delete.
@@ -81,7 +87,7 @@ you tap Export yourself.
   cut for the MVP, and open decisions for the next session.
 - [`docs/competitive-analysis-copilot.md`](docs/competitive-analysis-copilot.md) —
   brief competitive read on Copilot Money and positioning ideas for Lava
-  Finance.
+  Money.
 - [`docs/STRATEGY.md`](docs/STRATEGY.md) — broader personal-finance market
   research, product positioning, and the roadmap decisions that shaped
   what got built and why.

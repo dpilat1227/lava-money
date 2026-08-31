@@ -15,6 +15,10 @@ export interface PersistedState {
   /** Defaults to `[]` via `??` below for anyone upgrading from a persisted
    * blob written before custom categories existed. */
   customCategories: Category[];
+  /** Transaction ids that already got a "spend pause" reflection card (see
+   * lib/utils/impause.ts) -- persisted so acknowledging one doesn't come
+   * back on next app open. Defaults to `[]` for pre-Impause blobs. */
+  acknowledgedPauseIds: string[];
 }
 
 export async function loadPersistedState(): Promise<PersistedState | null> {
@@ -22,9 +26,13 @@ export async function loadPersistedState(): Promise<PersistedState | null> {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedState;
-    // Older persisted blobs predate customCategories -- default it so
-    // callers never have to null-check.
-    return { ...parsed, customCategories: parsed.customCategories ?? [] };
+    // Older persisted blobs predate customCategories/acknowledgedPauseIds --
+    // default them so callers never have to null-check.
+    return {
+      ...parsed,
+      customCategories: parsed.customCategories ?? [],
+      acknowledgedPauseIds: parsed.acknowledgedPauseIds ?? [],
+    };
   } catch {
     return null;
   }

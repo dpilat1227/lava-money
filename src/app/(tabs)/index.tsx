@@ -9,13 +9,14 @@ import { useUpcomingRecurring, useNetWorthHistory, useNetWorthSummary } from '@/
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { isAssetAccount, type Account } from '@/lib/types';
+import { findCategorySuggestions } from '@/lib/utils/categorizer';
 import { formatCurrency } from '@/lib/utils/currency';
 import { formatFullDate } from '@/lib/utils/date';
 import { needsAttention, presentSyncStatus } from '@/lib/utils/sync';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { accounts, refreshAllLinked } = useFinance();
+  const { accounts, transactions, refreshAllLinked } = useFinance();
   const history = useNetWorthHistory(6);
   const summary = useNetWorthSummary();
   const upcoming = useUpcomingRecurring(4);
@@ -23,6 +24,10 @@ export default function HomeScreen() {
   const assetAccounts = accounts.filter(a => isAssetAccount(a.type));
   const liabilityAccounts = accounts.filter(a => !isAssetAccount(a.type));
   const attentionCount = accounts.filter(needsAttention).length;
+  // Moved here from Settings (see docs/HANDOFF.md night-3 open questions) --
+  // an actionable nudge reads better next to the other "needs a look" banner
+  // than buried on a settings page under category management.
+  const suggestionCount = findCategorySuggestions(transactions).length;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
@@ -36,6 +41,22 @@ export default function HomeScreen() {
             </Text>
             <Text variant="caption" color={Colors.text3} style={{ marginTop: 2 }}>
               Balances may be out of date. Tap to refresh all connections.
+            </Text>
+          </Pressable>
+        )}
+
+        {suggestionCount > 0 && (
+          <Pressable onPress={() => router.push('/review-categories')} style={styles.suggestionBanner}>
+            <View style={{ flex: 1 }}>
+              <Text variant="body" weight="semibold" color={Colors.orange}>
+                {suggestionCount} category suggestion{suggestionCount === 1 ? '' : 's'} to review
+              </Text>
+              <Text variant="caption" color={Colors.text3} style={{ marginTop: 2 }}>
+                A few transactions look like they match a category rule.
+              </Text>
+            </View>
+            <Text variant="body" color={Colors.orange} weight="semibold">
+              Review ›
             </Text>
           </Pressable>
         )}
@@ -162,6 +183,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amberSoft,
     borderWidth: 1,
     borderColor: 'rgba(251,191,36,0.35)',
+  },
+  suggestionBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.orangeSoft,
+    borderWidth: 1,
+    borderColor: 'rgba(255,115,0,0.3)',
   },
   accountRow: {
     flexDirection: 'row',

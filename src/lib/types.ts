@@ -1,8 +1,12 @@
 /**
  * Core data model. Shaped loosely after what Plaid returns (accounts,
- * transactions with a merchant + category) so a real bank-data provider can
- * be dropped in later behind the same `BankProvider` interface (see
- * lib/store/FinanceContext.tsx) without reshaping every screen.
+ * transactions with a merchant + category) purely because that shape is a
+ * reasonable lowest-common-denominator for bank data generally -- NOT a
+ * commitment to Plaid as the provider. Per docs/STRATEGY.md's night-4
+ * decision, a real connection (if built) would be SimpleFIN-style
+ * read-only, not Plaid; see `lib/providers/BankProvider.ts` for that
+ * decision's design stub. A real provider drops in later behind that
+ * interface without reshaping every screen.
  *
  * One deliberate departure from Plaid's own convention: Plaid returns
  * *positive* amounts for money leaving an account and negative for money
@@ -37,7 +41,7 @@ export type AccountSource = 'linked' | 'manual';
  * Connection health for a `linked` account. Modeled now, ahead of any real
  * bank-data provider, so the UI (badges, refresh actions, the "needs
  * attention" banner) already exists and doesn't get bolted on later when a
- * real Plaid/MX adapter starts producing these states for real:
+ * real SimpleFIN-style adapter starts producing these states for real:
  * - `synced` -- last refresh succeeded recently.
  * - `stale` -- last refresh succeeded, but it's been a while; balances may
  *   be out of date.

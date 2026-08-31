@@ -1,12 +1,11 @@
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { CategoryIcon, Card, ScreenHeader, Text } from '@/components/ui';
 import { ChartPalette, Colors, Radius, Spacing } from '@/constants/theme';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatCurrency } from '@/lib/utils/currency';
-import { findCategorySuggestions } from '@/lib/utils/categorizer';
 import { exportAllDataAsJson, exportTransactionsAsCsv } from '@/lib/utils/export';
 import { needsAttention, presentSyncStatus } from '@/lib/utils/sync';
 
@@ -29,7 +28,6 @@ export default function SettingsScreen() {
   } = useFinance();
   const [exporting, setExporting] = useState<'json' | 'csv' | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
-  const suggestionCount = useMemo(() => findCategorySuggestions(transactions).length, [transactions]);
 
   const linkedAccounts = accounts.filter(a => a.source === 'linked');
   const manualAccounts = accounts.filter(a => a.source === 'manual');
@@ -174,16 +172,6 @@ export default function SettingsScreen() {
               </Text>
             </Pressable>
           </View>
-          {suggestionCount > 0 && (
-            <Pressable onPress={() => router.push('/review-categories')} style={styles.suggestionBanner}>
-              <Text variant="body" color={Colors.text2}>
-                {suggestionCount} category suggestion{suggestionCount === 1 ? '' : 's'} to review
-              </Text>
-              <Text variant="body" color={Colors.orange} weight="semibold">
-                Review ›
-              </Text>
-            </Pressable>
-          )}
           <Card style={{ gap: Spacing.sm }}>
             {customCategories.length === 0 ? (
               <Text variant="body" color={Colors.text3}>
@@ -436,18 +424,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   categoryRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
-  suggestionBanner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm + 2,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.orangeSoft,
-    borderWidth: 1,
-    borderColor: 'rgba(255,115,0,0.3)',
-    marginBottom: Spacing.sm,
-  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
