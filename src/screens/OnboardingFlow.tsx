@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button, Text } from '@/components/ui';
-import { Colors, Spacing } from '@/constants/theme';
+import { Button, FlameMark, Text } from '@/components/ui';
+import { Colors, Radius, Shadow, Spacing } from '@/constants/theme';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { AddAccountChooser } from '@/screens/AddAccountChooser';
 import { LinkAccountFlow } from '@/screens/LinkAccountFlow';
@@ -33,45 +33,12 @@ export function OnboardingFlow() {
   );
 }
 
-function FlameMark({ size = 64 }: { size?: number }) {
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <View
-        style={{
-          position: 'absolute',
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: Colors.orange,
-          opacity: 0.16,
-        }}
-      />
-      <View
-        style={{
-          width: size * 0.62,
-          height: size * 0.62,
-          borderRadius: size * 0.31,
-          backgroundColor: Colors.orangeCta,
-          transform: [{ rotate: '45deg' }],
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          width: size * 0.32,
-          height: size * 0.32,
-          borderRadius: size * 0.16,
-          backgroundColor: Colors.amber,
-        }}
-      />
-    </View>
-  );
-}
-
 function WelcomeStep({ onNext }: { onNext: () => void }) {
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl }}>
-      <FlameMark size={72} />
+      <View style={styles.flameGlow}>
+        <FlameMark size={40} />
+      </View>
       <Text variant="display" style={{ marginTop: Spacing.xl, textAlign: 'center' }}>
         Lava Money
       </Text>
@@ -102,3 +69,18 @@ function FeatureRow({ emoji, text }: { emoji: string; text: string }) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  flameGlow: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2a1006',
+    borderWidth: 1,
+    borderColor: 'rgba(255,115,0,0.35)',
+    ...Shadow.md,
+    shadowColor: Colors.orange,
+  },
+});

@@ -49,3 +49,43 @@ export function buildNetWorthHistory(accounts: Account[], transactions: Transact
 export function netWorthOf(point: NetWorthPoint): number {
   return point.assets - point.liabilities;
 }
+
+/** Same "unwind transactions from the current balance" trick as
+ * `buildNetWorthHistory`, but for a single account and expressed as a
+ * signed contribution to net worth -- a liability account paying itself
+ * down counts as a *positive* contribution, matching how a plain-language
+ * caption ("mostly from X") should read. */
+function netWorthContributionAsOf(account: Account, transactions: Transaction[], cutoffIso: string): number {
+  const futureSum = transactions
+    .filter(t => t.accountId === account.id && t.date >= cutoffIso)
+    .reduce((s, t) => s + t.amount, 0);
+
+  if (isAssetAccount(account.type)) {
+    return account.balance - futureSum;
+  }
+  return -Math.max(0, account.balance + futureSum);
+}
+
+export interface NetWorthMover {
+  account: Account;
+  delta: number;
+}
+
+/** Which single account moved net worth the most over the last N months --
+ * the one fact behind Home's "mostly from X" caption. Deliberately just the
+ * single biggest mover, not a full attribution breakdown: one sentence
+ * should read like an observation, not a report. */
+export function biggestNetWorthMover(accounts: Account[], transactions: Transaction[], monthsBack: number): NetWorthMover | undefined {
+  const cutoffIso = isoDate(startOfMonth(addMonths(new Date(), -monthsBack + 1)));
+
+  let best: NetWorthMover | undefined;
+  for (const account of accounts) {
+    const before = netWorthContributionAsOf(account, transactions, cutoffIso);
+    const now = isAssetAccount(account.type) ? account.balance : -account.balance;
+    const delta = now - before;
+    if (!best || Math.abs(delta) > Math.abs(best.delta)) {
+      best = { account, delta };
+    }
+  }
+  return best;
+}

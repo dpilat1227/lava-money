@@ -49,6 +49,8 @@ src/
                         & subscriptions" surface (see below)
     impause/            PausePrompt -- the "spend pause" reflection card (see
                         "Impause: the spend-pause reflection layer" below)
+    home/               NetWorthHero, InsightChips, NeedsAttentionCard -- the
+                        Home-screen modules (see "The Home screen" below)
   lib/
     providers/
       BankProvider.ts     Design-only interface stub for a future real bank
@@ -334,6 +336,53 @@ Impause-style purchase-time pause isn't something it can honestly build.
   It's an allow-list of "already shown," not a computed value — unlike
   `recurringSeries`/`categories`, there's no other state it could be
   derived from.
+
+## The Home screen
+
+Was a plain "number + chart + account list" dashboard through night 4 —
+functional, but indistinguishable from a template. Reworked against a
+competitor read (Monarch's Sankey, Copilot's pace bands/gauges, YNAB's
+personalization, Origin's forecast narrative — see the
+`home-dashboard-design-direction` canvas from that session for the full
+breakdown) into what's actually buildable now versus what needs real
+projection logic later. `app/(tabs)/index.tsx` composes three new
+`components/home/` modules plus a couple of smaller upgrades in place:
+
+- `NetWorthHero.tsx`: the net-worth card, now with an ambient SVG radial
+  glow behind the number (brand warmth, not a generic drop shadow), a
+  directional change pill (▲/▼), an explicit "calculated on this device,
+  never uploaded" line — the one sentence that actually differentiates this
+  app from a competitor screenshot, so it earns a permanent spot on the
+  first screen rather than a Settings toggle — and a one-line auto-generated
+  caption under the chart (`buildTrendCaption()`, same file) naming the
+  single biggest driver of the period's net-worth change via
+  `lib/utils/netWorth.ts`'s `biggestNetWorthMover()`. This is deliberately
+  *not* a step toward Origin-style forecasting — it's plain-language framing
+  of data already on hand, no projection math, no milestones. Real
+  forecasting (if it happens) is a separate, later feature that needs to
+  earn its own accuracy bar first.
+- `InsightChips.tsx`: a horizontal row of small facts pulled from data the
+  app was already computing elsewhere for Trends (subscriptions total via
+  `useRecurringInsights()`, top category via `useCategorySpendTotals(1)`,
+  spend-so-far vs. 6-month average via `useMonthlyIncomeVsExpense()`) but
+  never surfaced on Home. No new math — just a second place to see facts
+  that used to require a tab switch to find.
+- `NeedsAttentionCard.tsx`: replaces two separately-colored banners (stale
+  accounts, category suggestions) that read as uncoordinated alert spam
+  stacked on top of each other with one card, one "Needs a look" header,
+  and a row per item — same information, coordinated presentation.
+- `AccountRow` (inline in `index.tsx`) swapped a plain colored dot for an
+  institution-initial avatar with the sync-status dot overlaid at the
+  corner (notification-badge style) — more premium, and the status dot no
+  longer competes with the institution color for the same tiny space.
+- `components/ui/FlameMark.tsx`: the brand's actual flame silhouette
+  (ported from `lava_money_web`'s `FlameMark.tsx` via `react-native-svg`),
+  used in Home's header badge and swapped in for `OnboardingFlow.tsx`'s old
+  hand-rolled placeholder (three stacked shapes, one of them a rotated
+  square) — one real mark instead of two different fake ones.
+- Pull-to-refresh (`RefreshControl`) now wraps Home's `ScrollView`, wired to
+  the same `refreshAllLinked()` the attention banner already used — tapping
+  the banner and pulling down do the same thing through the same code path.
 
 ## Known limitations (deliberate, for an MVP)
 

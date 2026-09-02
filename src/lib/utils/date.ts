@@ -44,3 +44,15 @@ export function formatFullDate(iso: string): string {
 export function currentMonthKey(): string {
   return monthKey(isoDate(new Date()));
 }
+
+/** Time-of-day greeting for the Home screen header -- there's no user name
+ * anywhere in this app (no accounts/login, by design), so this is the one
+ * lightweight way "hi" can feel like it's actually looking at a clock
+ * instead of a static "Overview" label every time. */
+export function greetingForHour(hour: number = new Date().getHours()): string {
+  if (hour < 5) return 'Still up?';
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  if (hour < 22) return 'Good evening';
+  return 'Still up?';
+}

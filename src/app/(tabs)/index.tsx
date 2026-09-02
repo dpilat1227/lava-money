@@ -1,22 +1,27 @@
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
-import { NetWorthChart } from '@/components/charts/NetWorthChart';
-import { Amount, Badge, Card, ScreenHeader, Text } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { InsightChips } from '@/components/home/InsightChips';
+import { NeedsAttentionCard } from '@/components/home/NeedsAttentionCard';
+import { NetWorthHero } from '@/components/home/NetWorthHero';
+import { Amount, Card, FlameMark, Text } from '@/components/ui';
+import { Colors, Radius, Shadow, Spacing } from '@/constants/theme';
 import { useUpcomingRecurring, useNetWorthHistory, useNetWorthSummary } from '@/hooks/useFinanceSelectors';
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { isAssetAccount, type Account } from '@/lib/types';
 import { findCategorySuggestions } from '@/lib/utils/categorizer';
 import { formatCurrency } from '@/lib/utils/currency';
-import { formatFullDate } from '@/lib/utils/date';
+import { formatFullDate, greetingForHour } from '@/lib/utils/date';
 import { needsAttention, presentSyncStatus } from '@/lib/utils/sync';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { accounts, transactions, refreshAllLinked } = useFinance();
+  const [refreshing, setRefreshing] = useState(false);
+
   const history = useNetWorthHistory(6);
   const summary = useNetWorthSummary();
   const upcoming = useUpcomingRecurring(4);
@@ -24,60 +29,46 @@ export default function HomeScreen() {
   const assetAccounts = accounts.filter(a => isAssetAccount(a.type));
   const liabilityAccounts = accounts.filter(a => !isAssetAccount(a.type));
   const attentionCount = accounts.filter(needsAttention).length;
-  // Moved here from Settings (see docs/HANDOFF.md night-3 open questions) --
-  // an actionable nudge reads better next to the other "needs a look" banner
-  // than buried on a settings page under category management.
   const suggestionCount = findCategorySuggestions(transactions).length;
 
+  const handleRefresh = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setRefreshing(true);
+    refreshAllLinked();
+    setTimeout(() => setRefreshing(false), 500);
+  }, [refreshAllLinked]);
+
   return (
-    <ScrollView style={styles.root} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
-      <ScreenHeader title="Overview" subtitle={formatFullDate(new Date().toISOString().slice(0, 10))} />
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={{ paddingBottom: Spacing.xxxl }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.orange} />}
+    >
+      <View style={styles.headerRow}>
+        <View style={{ flex: 1 }}>
+          <Text variant="display">{greetingForHour()}</Text>
+          <Text variant="body" color={Colors.text3} style={{ marginTop: 4 }}>
+            {formatFullDate(new Date().toISOString().slice(0, 10))}
+          </Text>
+        </View>
+        <View style={styles.flameBadge}>
+          <FlameMark size={18} />
+        </View>
+      </View>
 
       <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.lg }}>
-        {attentionCount > 0 && (
-          <Pressable onPress={refreshAllLinked} style={styles.attentionBanner}>
-            <Text variant="body" weight="semibold" color={Colors.amber}>
-              {attentionCount === 1 ? '1 account needs' : `${attentionCount} accounts need`} attention
-            </Text>
-            <Text variant="caption" color={Colors.text3} style={{ marginTop: 2 }}>
-              Balances may be out of date. Tap to refresh all connections.
-            </Text>
-          </Pressable>
-        )}
+        <NeedsAttentionCard attentionCount={attentionCount} suggestionCount={suggestionCount} onRefreshAccounts={handleRefresh} />
 
-        {suggestionCount > 0 && (
-          <Pressable onPress={() => router.push('/review-categories')} style={styles.suggestionBanner}>
-            <View style={{ flex: 1 }}>
-              <Text variant="body" weight="semibold" color={Colors.orange}>
-                {suggestionCount} category suggestion{suggestionCount === 1 ? '' : 's'} to review
-              </Text>
-              <Text variant="caption" color={Colors.text3} style={{ marginTop: 2 }}>
-                A few transactions look like they match a category rule.
-              </Text>
-            </View>
-            <Text variant="body" color={Colors.orange} weight="semibold">
-              Review ›
-            </Text>
-          </Pressable>
-        )}
+        <NetWorthHero
+          netWorth={summary.netWorth}
+          change={summary.change}
+          accountCount={accounts.length}
+          history={history}
+          accounts={accounts}
+          transactions={transactions}
+        />
 
-        <Card>
-          <Text variant="caption" color={Colors.text3}>
-            Net worth
-          </Text>
-          <Text variant="display" style={{ marginTop: 4 }}>
-            {formatCurrency(summary.netWorth)}
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-            <Badge
-              label={`${summary.change >= 0 ? '+' : ''}${formatCurrency(summary.change, { compact: true })} this month`}
-              color={summary.change >= 0 ? Colors.green : Colors.red}
-            />
-          </View>
-          <View style={{ marginTop: Spacing.lg }}>
-            <NetWorthChart points={history} />
-          </View>
-        </Card>
+        <InsightChips />
 
         <View style={{ flexDirection: 'row', gap: Spacing.md }}>
           <Card style={{ flex: 1 }}>
@@ -158,16 +149,20 @@ function AccountRow({ account, balance }: { account: Account; balance: number })
   const status = presentSyncStatus(account);
   return (
     <Pressable style={({ pressed }) => [styles.accountRow, { opacity: pressed ? 0.8 : 1 }]} onPress={() => router.push(`/account/${account.id}`)}>
-      <View style={[styles.institutionDot, { backgroundColor: institution.color }]} />
-      <View style={{ flex: 1 }}>
-        <Text variant="body">{account.name}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
-          <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-          <Text variant="micro" color={Colors.text4} numberOfLines={1}>
-            {status.label}
-            {account.creditLimit ? ` · ${formatCurrency(account.creditLimit, { compact: true })} limit` : ''}
+      <View style={styles.avatarWrap}>
+        <View style={[styles.institutionAvatar, { backgroundColor: `${institution.color}22`, borderColor: `${institution.color}44` }]}>
+          <Text variant="body" weight="bold" color={institution.color}>
+            {institution.name.charAt(0)}
           </Text>
         </View>
+        <View style={[styles.statusDot, { backgroundColor: status.color }]} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text variant="body">{account.name}</Text>
+        <Text variant="micro" color={Colors.text4} numberOfLines={1} style={{ marginTop: 2 }}>
+          {status.label}
+          {account.creditLimit ? ` · ${formatCurrency(account.creditLimit, { compact: true })} limit` : ''}
+        </Text>
       </View>
       <Amount amount={balance} variant="subtitle" neutral />
     </Pressable>
@@ -176,24 +171,25 @@ function AccountRow({ account, balance }: { account: Account; balance: number })
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg },
-  attentionBanner: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.amberSoft,
-    borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.35)',
-  },
-  suggestionBanner: {
+  headerRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.orangeSoft,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
+  },
+  flameBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2a1006',
     borderWidth: 1,
-    borderColor: 'rgba(255,115,0,0.3)',
+    borderColor: 'rgba(255,115,0,0.35)',
+    ...Shadow.sm,
+    shadowColor: Colors.orange,
   },
   accountRow: {
     flexDirection: 'row',
@@ -206,8 +202,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border1,
   },
-  institutionDot: { width: 10, height: 10, borderRadius: 5 },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  avatarWrap: { width: 36, height: 36 },
+  institutionAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusDot: {
+    position: 'absolute',
+    bottom: -1,
+    right: -1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: Colors.bg,
+  },
   addAccountRow: {
     paddingVertical: Spacing.md,
     alignItems: 'center',

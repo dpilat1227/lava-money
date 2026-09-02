@@ -39,11 +39,15 @@ it's best evaluated on an actual simulator/device rather than the web preview
 
 - **Onboarding** — a welcome screen, then a real choice: "Connect a bank"
   (simulated linking flow) or "Add manually" (real form, no bank involved).
-- **Home** — net worth, a 6-month trend chart, account balances (each with
-  a sync-status line — "Synced 2h ago," "Manual · updated by you," "Stale,"
-  "Connection issue"), a "needs attention" banner when a linked account's
-  sync has gone stale or failed, a "category suggestions to review" banner
-  when the categorizer has ideas, upcoming recurring bills.
+- **Home** — a net-worth hero (6-month trend chart, directional change, and
+  an auto-generated one-line caption naming the biggest driver of the
+  change — "Up 3% over the last 6 months — mostly from Everyday Checking"),
+  a horizontal row of insight chips (subscriptions total, top category,
+  spend-so-far vs. average), a single "Needs a look" card consolidating
+  stale-account and category-suggestion alerts, account balances with
+  institution-initial avatars and a sync-status dot (each account's status
+  line reads "Synced 2h ago," "Manual · updated by you," "Stale," or
+  "Connection issue"), pull-to-refresh, and upcoming recurring bills.
 - **Account detail** (`/account/[id]`) — balance, sync status with a
   refresh action (linked) or an inline balance editor (manual), and for
   manual accounts: **+ Add transaction** (a real hand-entry form) and
