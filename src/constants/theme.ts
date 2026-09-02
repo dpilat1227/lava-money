@@ -15,6 +15,16 @@ export const Colors = {
   surface4: '#403a32',
   /** Card fill — translucent so it reads as "lifted," not pasted on top. */
   surfaceCard: 'rgba(255,130,60,0.05)',
+  /** One step up from surfaceCard — for the single hero surface on a screen
+   * (net-worth card, an in-focus row) that should read as more present than
+   * its neighbors without becoming a different component. See `Elevation`. */
+  surfaceCardRaised: 'rgba(255,140,60,0.09)',
+  /** Sheet/modal fill — deliberately closer to opaque than any card tint,
+   * since sheets sit *above* the whole screen, not beside other cards. Used
+   * as the fallback fill when `expo-glass-effect`'s native material isn't
+   * available (Android/web); on iOS the glass view supplies its own material
+   * and this only shows through at the edges. */
+  surfaceGlass: 'rgba(24,19,16,0.82)',
 
   border1: 'rgba(255,235,215,0.07)',
   border2: 'rgba(255,235,215,0.11)',
@@ -114,4 +124,98 @@ export const Shadow = {
     shadowOffset: { width: 0, height: 16 },
     elevation: 10,
   },
+} as const;
+
+/**
+ * "Ember" elevation scale — every surface in the app picks one of these
+ * instead of hand-rolling a fill/border/shadow combo. Before this, `Card`
+ * and every ad-hoc row/tile used the exact same flat tint
+ * (`surfaceCard` + `border1` + no shadow), so a net-worth hero, a settings
+ * row, and a budget tile were visually indistinguishable — nothing on
+ * screen could out-rank anything else. Three levels, not five: more than
+ * three and the eye stops being able to tell them apart anyway.
+ *
+ * - `resting` — the default. Most cards, most of the time.
+ * - `raised` — the one hero surface per screen that should read as more
+ *   present (net worth, an expanded row, a selected chip).
+ * - `glass` — sheets, modals, popovers: things floating *above* the screen
+ *   rather than laid out within it. Pair with `GlassSurface` so iOS gets a
+ *   real Liquid Glass material and Android/web get this fill as a fallback.
+ */
+export const Elevation = {
+  resting: {
+    backgroundColor: Colors.surfaceCard,
+    borderColor: Colors.border1,
+    borderWidth: 1,
+    ...Shadow.sm,
+  },
+  raised: {
+    backgroundColor: Colors.surfaceCardRaised,
+    borderColor: Colors.border2,
+    borderWidth: 1,
+    ...Shadow.md,
+  },
+  glass: {
+    backgroundColor: Colors.surfaceGlass,
+    borderColor: Colors.border3,
+    borderWidth: 1,
+    ...Shadow.lg,
+  },
+} as const;
+
+/**
+ * The accent budget — where `Colors.orange` (and its variants) is and isn't
+ * allowed to appear. This is a convention, not something TypeScript can
+ * enforce, but naming it here means every screen redesign in this overhaul
+ * can point back to one rule instead of re-deriving it: orange is *earned*
+ * by being the most important thing on the screen, not sprinkled evenly.
+ *
+ * Allowed:
+ *  - the brand mark / flame glow
+ *  - exactly one hero number or primary metric per screen
+ *  - the single primary action (Button's default variant)
+ *  - active/selected state on tabs, chips, and toggles
+ *  - direct correctness signals (an over-budget bar, a warning row)
+ *
+ * Not allowed:
+ *  - decorative icon tinting when a category already has its own color
+ *  - more than one "loudest" element competing for attention on one screen
+ *  - default/resting states of things that aren't selected or primary
+ */
+export const AccentUsage = {
+  brandMark: Colors.orange,
+  heroMetric: Colors.orange,
+  primaryAction: Colors.orangeCta,
+  selected: Colors.orange,
+  warning: Colors.amber,
+  danger: Colors.red,
+} as const;
+
+/**
+ * Motion tokens for the Reanimated pass — spring configs tuned for "warm,"
+ * not "bouncy." A flame doesn't overshoot and wobble; it settles. Every
+ * press/entrance animation in the overhaul should reference one of these
+ * instead of a bespoke `withSpring` call so the whole app moves with one
+ * consistent hand instead of a different feel per screen.
+ */
+export const Motion = {
+  spring: {
+    /** Press feedback, toggles — fast settle, minimal overshoot. */
+    snappy: { damping: 18, stiffness: 260, mass: 0.7 },
+    /** List entrances, sheet presentation — a touch softer, still quick. */
+    gentle: { damping: 16, stiffness: 160, mass: 0.9 },
+    /** Number count-ups, hero-value changes — slow enough to read as a
+     * value actually *changing*, not just re-rendering. */
+    settle: { damping: 20, stiffness: 90, mass: 1 },
+  },
+  duration: {
+    fast: 120,
+    base: 220,
+    slow: 360,
+  },
+  /** Scale applied on press-in across buttons, cards, and rows so touch
+   * feedback is consistent everywhere it appears. */
+  pressScale: 0.97,
+  /** Per-item delay step for staggered list entrances. */
+  staggerStep: 32,
 } as const;
