@@ -1,13 +1,23 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { Text } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Card, CategoryGlyph, CategoryIcon, Icon, Text, type IconName } from '@/components/ui';
+import { Colors, Spacing } from '@/constants/theme';
 import { useCategorySpendTotals, useMonthlyIncomeVsExpense, useRecurringInsights } from '@/hooks/useFinanceSelectors';
 import { findCategory } from '@/lib/mock/categories';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatCurrency } from '@/lib/utils/currency';
+
+interface Chip {
+  icon: React.ReactNode;
+  value: string;
+  label: string;
+  tint: string;
+  onPress: () => void;
+}
+
+const CHIP_WIDTH = 148;
 
 /**
  * A row of small, glanceable facts pulled from data the app was already
@@ -16,6 +26,12 @@ import { formatCurrency } from '@/lib/utils/currency';
  * Trends tab if you go dig" into "here's one thing worth knowing, right
  * now," which is the difference between a dashboard and a spreadsheet with
  * nicer fonts.
+ *
+ * The audit flagged this row collapsing awkwardly to one lonely
+ * fixed-width card when data is thin (new account, no subscriptions yet).
+ * Below 3 chips there's no need to scroll, so those render as equal-width
+ * flex siblings that fill the row instead of a horizontal ScrollView with
+ * dead space on the right.
  */
 export function InsightChips() {
   const router = useRouter();
@@ -29,13 +45,14 @@ export function InsightChips() {
   const paceDelta = currentExpense - avgExpense;
   const topCategory = topCategories[0];
 
-  const chips: { emoji: string; value: string; label: string; tint: string; onPress: () => void }[] = [];
+  const chips: Chip[] = [];
 
   if (recurring.subscriptionsMonthlyTotal > 0) {
+    const count = recurring.items.filter(i => i.series.categoryId === 'subscriptions').length;
     chips.push({
-      emoji: '📺',
+      icon: <CategoryGlyph id="subscriptions" size={15} color={Colors.purple} />,
       value: formatCurrency(recurring.subscriptionsMonthlyTotal, { compact: true }) + '/mo',
-      label: `${recurring.items.filter(i => i.series.categoryId === 'subscriptions').length} subscription${recurring.items.filter(i => i.series.categoryId === 'subscriptions').length === 1 ? '' : 's'} detected`,
+      label: `${count} subscription${count === 1 ? '' : 's'} detected`,
       tint: Colors.purple,
       onPress: () => router.push('/trends'),
     });
@@ -44,7 +61,7 @@ export function InsightChips() {
   if (topCategory) {
     const cat = findCategory(categories, topCategory.categoryId);
     chips.push({
-      emoji: cat.emoji,
+      icon: <CategoryIcon id={cat.id} emoji={cat.emoji} color={cat.color} size={20} />,
       value: formatCurrency(topCategory.total, { compact: true }),
       label: `Top category: ${cat.name}`,
       tint: cat.color,
@@ -52,8 +69,9 @@ export function InsightChips() {
     });
   }
 
+  const paceIcon: IconName = paceDelta > 0 ? 'arrowUpRight' : 'arrowDownRight';
   chips.push({
-    emoji: paceDelta > 0 ? '📈' : '📉',
+    icon: <Icon name={paceIcon} size={14} color={paceDelta > 0 ? Colors.amber : Colors.green} />,
     value: formatCurrency(currentExpense, { compact: true }),
     label: `Spent so far, vs ${formatCurrency(avgExpense, { compact: true })} avg/mo`,
     tint: paceDelta > 0 ? Colors.amber : Colors.green,
@@ -62,7 +80,7 @@ export function InsightChips() {
 
   if (recurring.overdueCount > 0) {
     chips.push({
-      emoji: '⏳',
+      icon: <Icon name="warning" size={14} color={Colors.red} />,
       value: String(recurring.overdueCount),
       label: `recurring charge${recurring.overdueCount === 1 ? '' : 's'} may have lapsed`,
       tint: Colors.red,
@@ -72,35 +90,37 @@ export function InsightChips() {
 
   if (chips.length === 0) return null;
 
+  if (chips.length <= 3) {
+    return (
+      <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+        {chips.map((chip, i) => (
+          <InsightChipCard key={i} chip={chip} style={{ flex: 1 }} />
+        ))}
+      </View>
+    );
+  }
+
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: Spacing.sm, paddingRight: Spacing.lg }}>
       {chips.map((chip, i) => (
-        <Pressable
-          key={i}
-          onPress={chip.onPress}
-          style={({ pressed }) => [
-            {
-              width: 148,
-              padding: Spacing.md,
-              borderRadius: Radius.lg,
-              backgroundColor: Colors.surfaceCard,
-              borderWidth: 1,
-              borderColor: Colors.border1,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 15 }}>{chip.emoji}</Text>
-            <Text variant="subtitle" weight="bold" color={chip.tint} numberOfLines={1}>
-              {chip.value}
-            </Text>
-          </View>
-          <Text variant="micro" color={Colors.text4} style={{ marginTop: 4 }} numberOfLines={2}>
-            {chip.label}
-          </Text>
-        </Pressable>
+        <InsightChipCard key={i} chip={chip} style={{ width: CHIP_WIDTH }} />
       ))}
     </ScrollView>
+  );
+}
+
+function InsightChipCard({ chip, style }: { chip: Chip; style: StyleProp<ViewStyle> }) {
+  return (
+    <Card onPress={chip.onPress} style={[{ padding: Spacing.md }, style]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {chip.icon}
+        <Text variant="subtitle" weight="bold" color={chip.tint} numberOfLines={1}>
+          {chip.value}
+        </Text>
+      </View>
+      <Text variant="micro" color={Colors.text4} style={{ marginTop: 4 }} numberOfLines={2}>
+        {chip.label}
+      </Text>
+    </Card>
   );
 }

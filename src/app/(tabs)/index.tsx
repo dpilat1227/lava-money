@@ -6,7 +6,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 import { InsightChips } from '@/components/home/InsightChips';
 import { NeedsAttentionCard } from '@/components/home/NeedsAttentionCard';
 import { NetWorthHero } from '@/components/home/NetWorthHero';
-import { Amount, Card, FlameMark, Text } from '@/components/ui';
+import { Amount, Card, FlameMark, Icon, Text } from '@/components/ui';
 import { Colors, Radius, Shadow, Spacing } from '@/constants/theme';
 import { useUpcomingRecurring, useNetWorthHistory, useNetWorthSummary } from '@/hooks/useFinanceSelectors';
 import { getInstitution } from '@/lib/mock/institutions';
@@ -148,7 +148,7 @@ function AccountRow({ account, balance }: { account: Account; balance: number })
   const institution = getInstitution(account.institutionId);
   const status = presentSyncStatus(account);
   return (
-    <Pressable style={({ pressed }) => [styles.accountRow, { opacity: pressed ? 0.8 : 1 }]} onPress={() => router.push(`/account/${account.id}`)}>
+    <Card onPress={() => router.push(`/account/${account.id}`)} style={styles.accountRow}>
       <View style={styles.avatarWrap}>
         <View style={[styles.institutionAvatar, { backgroundColor: `${institution.color}22`, borderColor: `${institution.color}44` }]}>
           <Text variant="body" weight="bold" color={institution.color}>
@@ -165,7 +165,8 @@ function AccountRow({ account, balance }: { account: Account; balance: number })
         </Text>
       </View>
       <Amount amount={balance} variant="subtitle" neutral />
-    </Pressable>
+      <Icon name="chevronRight" size={14} color={Colors.text4} />
+    </Card>
   );
 }
 
@@ -198,9 +199,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.surfaceCard,
-    borderWidth: 1,
-    borderColor: Colors.border1,
   },
   avatarWrap: { width: 36, height: 36 },
   institutionAvatar: {

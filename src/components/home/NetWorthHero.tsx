@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { NetWorthChart } from '@/components/charts/NetWorthChart';
-import { Card, Text } from '@/components/ui';
+import { Card, Icon, Text } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import type { Account, NetWorthPoint, Transaction } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils/currency';
@@ -42,7 +42,7 @@ export function NetWorthHero({
   const caption = buildTrendCaption(history, accounts, transactions);
 
   return (
-    <Card style={{ overflow: 'hidden', position: 'relative' }}>
+    <Card level="raised" style={{ overflow: 'hidden', position: 'relative' }}>
       <View pointerEvents="none" style={{ position: 'absolute', top: -GLOW_SIZE * 0.45, left: -GLOW_SIZE * 0.25 }}>
         <Svg width={GLOW_SIZE} height={GLOW_SIZE}>
           <Defs>
@@ -64,8 +64,9 @@ export function NetWorthHero({
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
         <View style={[styles.changePill, { backgroundColor: trendUp ? Colors.greenSoft : Colors.redSoft, borderColor: `${trendColor}55` }]}>
+          <Icon name={trendUp ? 'arrowUpRight' : 'arrowDownRight'} size={11} color={trendColor} />
           <Text variant="micro" weight="bold" color={trendColor}>
-            {trendUp ? '▲' : '▼'} {formatCurrency(Math.abs(change), { compact: true })}
+            {formatCurrency(Math.abs(change), { compact: true })}
           </Text>
         </View>
         <Text variant="micro" color={Colors.text4}>
@@ -117,6 +118,8 @@ function buildTrendCaption(history: NetWorthPoint[], accounts: Account[], transa
 const styles = {
   changePill: {
     flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 3,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 999,
