@@ -22,6 +22,10 @@ export function FlowBarChart({ data }: { data: MonthlyFlow[] }) {
                 borderRadius: 4,
                 height: Math.max(3, (d.income / max) * HEIGHT),
                 backgroundColor: Colors.green,
+                shadowColor: Colors.green,
+                shadowOpacity: 0.5,
+                shadowRadius: 6,
+                shadowOffset: { width: 0, height: 0 },
               }}
             />
             <View
@@ -29,7 +33,11 @@ export function FlowBarChart({ data }: { data: MonthlyFlow[] }) {
                 width: 8,
                 borderRadius: 4,
                 height: Math.max(3, (d.expense / max) * HEIGHT),
-                backgroundColor: Colors.orange,
+                backgroundColor: Colors.orangeDim,
+                shadowColor: Colors.orangeDim,
+                shadowOpacity: 0.5,
+                shadowRadius: 6,
+                shadowOffset: { width: 0, height: 0 },
               }}
             />
           </View>
@@ -44,7 +52,7 @@ export function FlowBarChart({ data }: { data: MonthlyFlow[] }) {
       </View>
       <View style={{ flexDirection: 'row', gap: 16, marginTop: Spacing.md, justifyContent: 'center' }}>
         <Legend color={Colors.green} label="Income" />
-        <Legend color={Colors.orange} label="Expense" />
+        <Legend color={Colors.orangeDim} label="Expense" />
       </View>
     </View>
   );

@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { Badge, Card, Text } from '@/components/ui';
+import { Badge, Card, CategoryIcon, Text } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import type { RecurringInsightItem, RecurringInsights } from '@/lib/utils/insights';
 import { findCategory } from '@/lib/mock/categories';
@@ -95,12 +95,11 @@ export function RecurringInsightsCard({ insights }: { insights: RecurringInsight
           const category = findCategory(categories, item.series.categoryId);
           return (
             <View key={item.series.id} style={[styles.row, i === 0 && styles.rowFirst]}>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs }}>
-                  <Text variant="body">
-                    {category.emoji} {item.series.merchantName}
-                  </Text>
-                </View>
+              <CategoryIcon id={category.id} emoji={category.emoji} color={category.color} size={30} />
+              <View style={{ flex: 1, marginLeft: Spacing.sm }}>
+                <Text variant="body" numberOfLines={1}>
+                  {item.series.merchantName}
+                </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginTop: 2 }}>
                   <Text variant="micro" color={Colors.text4}>
                     {item.series.cadence} · {item.series.occurrenceCount}x seen

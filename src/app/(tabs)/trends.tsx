@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { CategoryDonut } from '@/components/charts/CategoryDonut';
 import { FlowBarChart } from '@/components/charts/FlowBarChart';
 import { RecurringInsightsCard } from '@/components/insights/RecurringInsightsCard';
-import { Card, ScreenHeader, Text } from '@/components/ui';
+import { Card, CategoryIcon, ScreenHeader, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useCategorySpendTotals, useMonthlyIncomeVsExpense, useRecurringInsights } from '@/hooks/useFinanceSelectors';
 import { findCategory } from '@/lib/mock/categories';
@@ -61,7 +61,7 @@ export default function TrendsScreen() {
                   onPress={() => setMonths(opt.months)}
                   style={[styles.rangeChip, months === opt.months && styles.rangeChipActive]}
                 >
-                  <Text variant="micro" color={months === opt.months ? Colors.text1 : Colors.text4} weight="semibold">
+                  <Text variant="micro" color={months === opt.months ? Colors.orange : Colors.text4} weight="semibold">
                     {opt.label}
                   </Text>
                 </Pressable>
@@ -73,25 +73,35 @@ export default function TrendsScreen() {
 
         {categoryTotals.length > 0 && (
           <Card style={{ gap: Spacing.sm }}>
-            {categoryTotals.map((c, i) => (
-              <View
-                key={c.categoryId}
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  paddingVertical: 6,
-                  borderTopWidth: i === 0 ? 0 : 1,
-                  borderTopColor: Colors.border1,
-                }}
-              >
-                <Text variant="body">
-                  {findCategory(categories, c.categoryId).emoji} {findCategory(categories, c.categoryId).name}
-                </Text>
-                <Text variant="body" weight="semibold">
-                  {formatCurrency(c.total)}
-                </Text>
-              </View>
-            ))}
+            <Text variant="subtitle" color={Colors.text2}>
+              Category breakdown
+            </Text>
+            {categoryTotals.map((c, i) => {
+              const category = findCategory(categories, c.categoryId);
+              return (
+                <View
+                  key={c.categoryId}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: 6,
+                    borderTopWidth: 1,
+                    borderTopColor: Colors.border1,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flex: 1 }}>
+                    <CategoryIcon id={category.id} emoji={category.emoji} color={category.color} size={28} />
+                    <Text variant="body" numberOfLines={1} style={{ flex: 1 }}>
+                      {category.name}
+                    </Text>
+                  </View>
+                  <Text variant="body" weight="semibold">
+                    {formatCurrency(c.total)}
+                  </Text>
+                </View>
+              );
+            })}
           </Card>
         )}
       </View>
@@ -104,5 +114,5 @@ const styles = StyleSheet.create({
   avgRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.sm },
   rangePicker: { flexDirection: 'row', backgroundColor: Colors.surface2, borderRadius: Radius.pill, padding: 2 },
   rangeChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.pill },
-  rangeChipActive: { backgroundColor: Colors.surface4 },
+  rangeChipActive: { backgroundColor: Colors.orangeSoft },
 });
