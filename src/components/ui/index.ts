@@ -11,4 +11,5 @@ export { Button } from './Button';
 export { EmptyState } from './EmptyState';
 export { FlameMark } from './FlameMark';
 export { Icon, type IconName } from './Icon';
+export { IconBadge } from './IconBadge';
 export { GlassSurface } from './GlassSurface';

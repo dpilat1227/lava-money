@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
-import { CategoryIcon, Card, ScreenHeader, Text } from '@/components/ui';
+import { CategoryIcon, Card, Icon, IconBadge, ScreenHeader, Text, type IconName } from '@/components/ui';
 import { ChartPalette, Colors, Radius, Spacing } from '@/constants/theme';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatCurrency } from '@/lib/utils/currency';
@@ -91,7 +91,17 @@ export default function SettingsScreen() {
                         const status = presentSyncStatus(a);
                         return (
                           <Pressable key={a.id} onPress={() => router.push(`/account/${a.id}`)} style={styles.accountRow}>
-                            <View style={{ flex: 1 }}>
+                            <View
+                              style={[
+                                styles.institutionDot,
+                                { backgroundColor: `${inst.color}22`, borderColor: `${inst.color}44` },
+                              ]}
+                            >
+                              <Text variant="micro" weight="bold" color={inst.color}>
+                                {inst.name.charAt(0)}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 1, marginLeft: Spacing.sm }}>
                               <Text variant="body">{a.name}</Text>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
                                 <View style={[styles.statusDot, { backgroundColor: status.color }]} />
@@ -118,7 +128,8 @@ export default function SettingsScreen() {
             <Card style={{ gap: Spacing.sm }}>
               {manualAccounts.map(a => (
                 <Pressable key={a.id} onPress={() => router.push(`/account/${a.id}`)} style={styles.accountRow}>
-                  <View style={{ flex: 1 }}>
+                  <IconBadge name="card" color={Colors.text3} size={30} />
+                  <View style={{ flex: 1, marginLeft: Spacing.sm }}>
                     <Text variant="body">{a.name}</Text>
                     <Text variant="micro" color={Colors.text4}>
                       Manual · updated by you
@@ -134,26 +145,32 @@ export default function SettingsScreen() {
         )}
 
         <Pressable onPress={() => router.push('/link-account')} style={styles.linkButton}>
+          <Icon name="plusCircle" size={16} color={Colors.orange} />
           <Text variant="body" color={Colors.orange} weight="semibold">
-            + Add account
+            Add account
           </Text>
         </Pressable>
 
         <View>
           <SectionLabel text="Data & privacy" />
           <Card style={{ gap: Spacing.md }}>
-            <Text variant="body" color={Colors.text2}>
-              Everything in Lava Money — linked or manual — is stored only on this device. Nothing is uploaded
-              anywhere unless you export it yourself.
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md }}>
+              <IconBadge name="shield" color={Colors.green} size={34} />
+              <Text variant="body" color={Colors.text2} style={{ flex: 1 }}>
+                Everything in Lava Money — linked or manual — is stored only on this device. Nothing is uploaded
+                anywhere unless you export it yourself.
+              </Text>
+            </View>
             <View style={{ gap: Spacing.sm }}>
               <ExportRow
+                icon="doc"
                 label="Export all data (JSON)"
                 sublabel="A full backup of every account and transaction."
                 loading={exporting === 'json'}
                 onPress={() => runExport('json')}
               />
               <ExportRow
+                icon="export"
                 label="Export transactions (CSV)"
                 sublabel="Opens in Excel, Sheets, or Numbers."
                 loading={exporting === 'csv'}
@@ -166,9 +183,10 @@ export default function SettingsScreen() {
         <View>
           <View style={styles.sectionLabelRow}>
             <SectionLabel text="Categories" />
-            <Pressable onPress={() => setAddingCategory(true)}>
+            <Pressable onPress={() => setAddingCategory(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Icon name="plus" size={13} color={Colors.orange} />
               <Text variant="caption" color={Colors.orange} weight="semibold">
-                + Add
+                Add
               </Text>
             </Pressable>
           </View>
@@ -181,7 +199,7 @@ export default function SettingsScreen() {
             ) : (
               customCategories.map(c => (
                 <View key={c.id} style={styles.categoryRow}>
-                  <CategoryIcon emoji={c.emoji} color={c.color} size={30} />
+                  <CategoryIcon id={c.id} emoji={c.emoji} color={c.color} size={30} />
                   <Text variant="body" style={{ flex: 1, marginLeft: Spacing.md }}>
                     {c.name}
                   </Text>
@@ -210,17 +228,26 @@ export default function SettingsScreen() {
 
         <View>
           <SectionLabel text="Appearance" />
-          <Card>
-            <Text variant="body">Dark</Text>
-            <Text variant="micro" color={Colors.text4} style={{ marginTop: 2 }}>
-              Lava Money is dark-only for now, to match LavaMesh.
-            </Text>
+          <Card style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <IconBadge name="moon" color={Colors.textAccent} size={34} />
+            <View style={{ marginLeft: Spacing.md }}>
+              <Text variant="body">Dark</Text>
+              <Text variant="micro" color={Colors.text4} style={{ marginTop: 2 }}>
+                Lava Money is dark-only for now, to match LavaMesh.
+              </Text>
+            </View>
           </Card>
         </View>
 
         <View>
           <SectionLabel text="About" />
           <Card style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: 2 }}>
+              <Icon name="info" size={15} color={Colors.text3} />
+              <Text variant="caption" weight="semibold" color={Colors.text3}>
+                App info
+              </Text>
+            </View>
             <InfoRow label="Version" value="0.2.0" />
             <InfoRow label="Bank connections" value="Simulated demo data" />
             <InfoRow label="Manual accounts" value="Real — yours to edit" />
@@ -231,6 +258,7 @@ export default function SettingsScreen() {
         <View>
           <SectionLabel text="Danger zone" />
           <Pressable onPress={confirmReset} style={styles.dangerRow}>
+            <Icon name="trash" size={15} color={Colors.red} />
             <Text variant="body" color={Colors.red} weight="semibold">
               Reset all data
             </Text>
@@ -364,10 +392,23 @@ function PlainButton({
   );
 }
 
-function ExportRow({ label, sublabel, loading, onPress }: { label: string; sublabel: string; loading: boolean; onPress: () => void }) {
+function ExportRow({
+  icon,
+  label,
+  sublabel,
+  loading,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  sublabel: string;
+  loading: boolean;
+  onPress: () => void;
+}) {
   return (
     <Pressable onPress={onPress} disabled={loading} style={styles.exportRow}>
-      <View style={{ flex: 1 }}>
+      <IconBadge name={icon} color={Colors.orange} size={30} />
+      <View style={{ flex: 1, marginLeft: Spacing.sm }}>
         <Text variant="body" color={Colors.orange} weight="semibold">
           {label}
         </Text>
@@ -375,7 +416,7 @@ function ExportRow({ label, sublabel, loading, onPress }: { label: string; subla
           {sublabel}
         </Text>
       </View>
-      {loading ? <ActivityIndicator size="small" color={Colors.orange} /> : <Text variant="body" color={Colors.text4}>›</Text>}
+      {loading ? <ActivityIndicator size="small" color={Colors.orange} /> : <Icon name="chevronRight" size={13} color={Colors.text4} />}
     </Pressable>
   );
 }
@@ -408,7 +449,15 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  linkButton: { paddingVertical: Spacing.sm, alignItems: 'center' },
+  institutionDot: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  linkButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.sm },
   exportRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -417,6 +466,9 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border1,
   },
   dangerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
     borderRadius: Radius.lg,

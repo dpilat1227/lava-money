@@ -47,6 +47,10 @@ const ICONS = {
   warning: { ios: 'exclamationmark.triangle.fill', android: 'warning' },
   xCircle: { ios: 'xmark.circle.fill', android: 'cancel' },
   info: { ios: 'info.circle.fill', android: 'info' },
+  moon: { ios: 'moon.fill', android: 'dark_mode' },
+  shield: { ios: 'checkmark.shield.fill', android: 'verified_user' },
+  sync: { ios: 'arrow.triangle.2.circlepath', android: 'sync' },
+  category: { ios: 'square.grid.2x2.fill', android: 'category' },
 } satisfies Record<string, { ios: SFSymbol; android: AndroidSymbol }>;
 
 export type IconName = keyof typeof ICONS;
