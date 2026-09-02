@@ -2,6 +2,7 @@ export { Card } from './Card';
 export { Text } from './Text';
 export { Amount } from './Amount';
 export { ProgressBar } from './ProgressBar';
+export { ProgressRing } from './ProgressRing';
 export { CategoryIcon } from './CategoryIcon';
 export { CategoryGlyph, hasCategoryGlyph } from './CategoryGlyph';
 export { Badge } from './Badge';
