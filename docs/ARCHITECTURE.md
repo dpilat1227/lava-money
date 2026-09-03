@@ -1,5 +1,17 @@
 # Architecture
 
+> **Note (Plaid + Copilot-redesign pass):** this doc predates two later,
+> substantial changes and hasn't been fully rewritten for them yet — read
+> it as mostly-accurate history rather than a from-scratch current
+> reference. The directory layout and "mock-data seam" sections below are
+> corrected; the rest (Impause, the Ember design system writeup, "known
+> limitations") describes real decisions that mostly still hold, but
+> references some components (`CategoryDonut`, `FlowBarChart`,
+> `RecurringInsightsCard`, `InsightChips`) that were since replaced —
+> see the corrected directory layout for their replacements, and
+> [`docs/design-audit-copilot-parity.md`](design-audit-copilot-parity.md)
+> + [`docs/PLAID_SETUP.md`](PLAID_SETUP.md) for what actually shipped.
+
 ## Stack
 
 - **Expo SDK 57 / React Native 0.86 / React 19**, TypeScript, strict mode.
@@ -45,20 +57,45 @@ src/
     ui/                 Design-system primitives (Text, Card, Amount, Button,
                         ProgressBar, ProgressRing, Badge, CategoryIcon,
                         CategoryGlyph, Icon, IconBadge, GlassSurface,
-                        StaggerItem, EmptyState, ScreenHeader, FlameMark) --
+                        StaggerItem, EmptyState, ScreenHeader, FlameMark,
+                        Atmosphere, InstitutionAvatar, PillButton, SampleTag) --
                         see "The Ember design system" below
-    charts/             NetWorthChart, CategoryDonut, FlowBarChart
-    insights/           RecurringInsightsCard -- the Trends-screen "recurring
-                        & subscriptions" surface (see below)
+    charts/             NetWorthChart, SpendCeilingChart (combo boundary-
+                        line + colored bars, replaced CategoryDonut/
+                        FlowBarChart in the Copilot-redesign pass)
+    account/            AccountBalanceHero (uncontained balance + full-width
+                        chart), CardArt (credit-card visual)
+    budgets/            BudgetHero (progress ring), SmartSetupCard,
+                        BudgetBreakdownCard, BudgetList, EditBudgetModal,
+                        AddBudgetChips
+    trends/             SpendingHeroCard (tabbed spend-over-time/by-category),
+                        CashFlowCard (income vs. spending, last complete month)
+    transactions/       TransactionRow
+    insights/           RecurringGrid + RecurringTeaserCard -- recurring &
+                        subscriptions moved to its own page (app/recurring.tsx),
+                        replacing the old Trends-embedded RecurringInsightsCard;
+                        CategoryRankedList replaced the old CategoryDonut for
+                        spend-by-category (a ranked list read far more clearly
+                        than a many-slice donut at this category count)
     impause/            PausePrompt -- the "spend pause" reflection card (see
                         "Impause: the spend-pause reflection layer" below)
-    home/               NetWorthHero, InsightChips, NeedsAttentionCard -- the
-                        Home-screen modules (see "The Home screen" below)
+    home/               NetWorthHero, SpendingCard, GetStartedNudge,
+                        NeedsAttentionCard -- the Home-screen modules (see
+                        "The Home screen" below); InsightChips was folded
+                        into SpendingCard + NetWorthHero's own stats row
+    web/                Desktop-only layout for the web build: DesktopShell
+                        (sidebar+grid chrome above `Breakpoints.wide`),
+                        DesktopDashboard/Budgets/Trends, Dialog (web's
+                        stand-in for a native modal sheet), Sparkline,
+                        DemoBanner
   lib/
     providers/
-      BankProvider.ts     Design-only interface stub for a future real bank
-                        connection (SimpleFIN-shaped, not Plaid) -- nothing
-                        imports this yet. See "the mock-data seam" below.
+      plaidProvider.ts    Real Plaid Link client flow (native only -- see
+                        docs/PLAID_SETUP.md). Replaced BankProvider.ts's
+                        SimpleFIN-shaped design-only stub once the decision
+                        to use Plaid instead was made -- see "the mock-data
+                        seam" below for why, and PLAID_SETUP.md for the full
+                        security model.
     types.ts            Core data model (Account, Transaction, Category, ...)
                         including AccountSource ('linked' | 'manual'),
                         SyncStatus ('synced' | 'stale' | 'error' | 'manual'),
@@ -143,54 +180,45 @@ avoids a redirect race between the native tab navigator mounting and the
 and `accounts` goes non-empty, this same component swaps out for the tab
 stack automatically on the next render — no navigation call required.
 
-## The mock-data seam (where a real bank connection would go)
+## Real bank data: Plaid on native, mock data everywhere else
 
 Everything downstream of `lib/types.ts` (budgets, trends, net worth,
 transaction list) only depends on those shapes — `Account`, `Transaction`,
-`Category`, `RecurringSeries`. Nothing in a screen or hook knows or cares
-that the data came from `lib/mock/generator.ts`.
+`Category`, `RecurringSeries`. No screen or hook cares whether an account's
+data came from `lib/mock/generator.ts` (sample data / mock-linked), a real
+Plaid connection, or a manual entry/CSV import — all three normalize to the
+same shapes before anything downstream ever sees them.
 
-**Decision (docs/STRATEGY.md, night 4): if a real provider ever gets built,
-it's SimpleFIN-style read-only, not Plaid** — a lighter trust ask that fits
-the data-ownership identity better. `lib/providers/BankProvider.ts` is a
-design-only stub of that shape (`connect(token)` / `refresh` / `disconnect`,
-no institution-picker method, since SimpleFIN's model is "user brings a
-token from their own bank/aggregator," not a Plaid Link-style picker).
-Nothing imports it yet — this fixes intent for later, not a build tonight.
+**This reverses an earlier decision.** `docs/STRATEGY.md` ("night 4")
+originally chose SimpleFIN-style read-only aggregation over Plaid, for a
+lighter trust ask fitting a data-ownership identity —
+`lib/providers/BankProvider.ts` was a design-only stub shaped for that
+(`connect(token)` / `refresh` / `disconnect`, no institution picker). That
+never got built for real: no SimpleFIN credentials exist to test against,
+and Plaid's picker-based flow plus 12,000+ supported institutions is a
+meaningfully lower onboarding cost for anyone evaluating a new finance app.
+Full rationale and the security model (token encryption, on-device-only
+transaction storage, sign-convention handling) is in
+[`docs/PLAID_SETUP.md`](PLAID_SETUP.md) — `BankProvider.ts` is deleted;
+`lib/providers/plaidProvider.ts` + `lib/utils/plaidMapping.ts` are the real
+implementation, gated to native only (native-only for now: web has no
+backend session and Plaid Link needs native code, so the web build stays
+a sample-data-only public demo).
 
-To wire in a real provider later:
+A few things that stayed true regardless of which provider ended up behind
+the seam:
 
-1. Implement `BankProvider` for real (or, if the SimpleFIN decision ever
-   changes, write a new interface for Plaid/Teller/Finicity-style delegated
-   access instead — don't force a Plaid adapter through the SimpleFIN-shaped
-   interface, they're different trust models for a reason).
-2. **Watch the sign convention.** Plaid returns positive amounts for money
-   leaving an account, negative for money coming in — backwards from what
-   you'd want to render directly. This app uses the intuitive convention
-   (negative = spend, positive = income) everywhere internally; negate at
-   the adapter boundary, not throughout the app. See the header comment in
-   `lib/types.ts`.
-3. Replace the call to `generateBankData()` in
-   `FinanceContext.tsx`'s `LINK_INSTITUTION` action with a call into the
-   real adapter (likely becoming async — the action/reducer would need to
-   move to an async thunk-style flow at that point, e.g. dispatch a
-   "loading" state, await the adapter, then dispatch the result).
-4. `buildNetWorthHistory()` (`lib/utils/netWorth.ts`) currently
-   reconstructs history by "unwinding" transactions from the current
-   balance. That only works for as far back as you have transaction
-   history for. Once real data is flowing, switch to actually storing a
-   `NetWorthPoint` snapshot on a monthly cron/schedule instead, and use the
-   reconstruction function only as a bootstrap for brand-new accounts that
-   don't have snapshots yet.
-5. ~~Recurring-bill detection (`RecurringSeries`) is currently generated
-   directly from the mock generator's own templates~~ — no longer true as
-   of night 3: `lib/utils/recurring.ts`'s `detectRecurringSeries()` runs a
-   real detection pass (merchant normalization + amount tolerance +
-   interval-gap clustering) over whatever `Transaction[]` exists, called
-   live from `FinanceContext` and memoized on `transactions`/`accounts`.
-   It works identically for linked, manual, and CSV-imported accounts —
-   nothing generator-specific about it. A real bank adapter needs no
-   change here at all.
+- `buildNetWorthHistory()` (`lib/utils/netWorth.ts`) reconstructs history
+  by "unwinding" transactions from the current balance — works as far back
+  as transaction history exists for any account, Plaid-linked or not.
+  Real snapshot storage (a `NetWorthPoint` per month, independent of
+  transaction depth) would be the next step if history needs to extend
+  further back than available transactions.
+- `lib/utils/recurring.ts`'s `detectRecurringSeries()` is a pure function
+  over whatever `Transaction[]` exists (merchant normalization + amount
+  tolerance + interval-gap clustering) — memoized in `FinanceContext` on
+  `transactions`/`accounts`. Identical code path for Plaid-linked, sample-
+  data, manual, and CSV-imported accounts; nothing provider-specific.
 
 ## Manual accounts: the data-ownership path, not a fallback
 

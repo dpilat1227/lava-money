@@ -1,27 +1,28 @@
 # Lava Money
 
-A personal finance / net-worth tracker for iOS and Android — Copilot Money's
-core loop (net worth, budgets, spend trends, one clean transaction feed),
-styled to match [LavaMesh](https://www.lavamesh.com)'s dark, orange-accented
-brand, but built around a different premise: **bank-linking is optional, not
-required.**
+A personal finance / net-worth tracker for iOS, Android, and web — one
+Expo/React Native codebase, three platforms. Net worth, budgets, spending
+trends, recurring-bill detection, and a real transaction feed, styled to
+match [LavaMesh](https://www.lavamesh.com)'s dark, orange-accented brand
+but built around Copilot Money's structural design patterns (elevated
+cards, progress rings, combo charts) — see
+[`docs/design-audit-copilot-parity.md`](docs/design-audit-copilot-parity.md)
+for a full self-directed UI/UX audit against Copilot/Apple/Vercel, with
+before/after screenshots.
 
-Every account can either be "linked" (a Plaid-Link-style simulated flow that
-generates ~6 months of realistic mock transaction history, so the seam is
-ready for a real provider later — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md))
-or added **manually** — a real, fully-functional path today, not a mock. A
-manual account gets a real balance you type in and edit, real hand-entered
-transactions, and a real CSV importer that reads an actual bank export file.
-Nothing about the manual path is a placeholder; it's the feature that makes
-LavaMesh's own "you own your data" identity mean something for a finance app,
-instead of just being marketing copy on top of a Plaid dashboard.
+**Real bank-linking via [Plaid](https://plaid.com)** on native (iOS/
+Android) — a genuine OAuth-style bank connection, not a mock. Every
+account can also be added **manually** (a real balance you type in and
+edit, real hand-entered transactions, a real CSV importer for bank
+export files) or, for a no-signup way to try the app, through
+**sample data** that generates ~6 months of realistic mock history. See
+[`docs/PLAID_SETUP.md`](docs/PLAID_SETUP.md) for why Plaid, the security
+model, and how to test it against Sandbox.
 
-Linked accounts also carry a **connection-health status** (synced / stale /
-error, with a "why is this out of date" banner and a refresh action) —
-modeled now, ahead of any real bank-data provider, because every competitor
-in this category shares the same top user complaint: silent, stale sync.
-Building the UI for that honestly from day one means it doesn't get bolted
-on later as an afterthought once a real provider exists.
+The web build ([lavamoney.io](https://www.lavamoney.io)) is a public,
+no-signup demo — it only ever uses the sample-data path, since Plaid Link
+requires native code and a backend session neither of which a public demo
+page should have.
 
 ## Get started
 
@@ -30,68 +31,78 @@ npm install
 npx expo start
 ```
 
-Then press `i` for the iOS simulator or `a` for Android, or scan the QR code
-with Expo Go. This app is dark-only and native-tab-based (`NativeTabs`), so
-it's best evaluated on an actual simulator/device rather than the web preview
-— the web target exists purely as a fast bundling sanity check.
+Press `i` for the iOS simulator or `a` for Android, or scan the QR code
+with Expo Go for the sample-data path. Real Plaid linking needs a
+dev-client build (`react-native-plaid-link-sdk` is a native module, not
+available in Expo Go) — see `docs/PLAID_SETUP.md`. The web target is a
+real supported platform (desktop sidebar+grid layout, phone-width single
+column below `Breakpoints.wide`), not just a bundling sanity check.
 
 ## What's here
 
-- **Onboarding** — a welcome screen, then a real choice: "Connect a bank"
-  (simulated linking flow) or "Add manually" (real form, no bank involved).
-- **Home** — a net-worth hero (6-month trend chart, directional change, and
-  an auto-generated one-line caption naming the biggest driver of the
-  change — "Up 3% over the last 6 months — mostly from Everyday Checking"),
-  a horizontal row of insight chips (subscriptions total, top category,
-  spend-so-far vs. average), a single "Needs a look" card consolidating
-  stale-account and category-suggestion alerts, account balances with
-  institution-initial avatars and a sync-status dot (each account's status
-  line reads "Synced 2h ago," "Manual · updated by you," "Stale," or
-  "Connection issue"), pull-to-refresh, and upcoming recurring bills.
-- **Account detail** (`/account/[id]`) — balance, sync status with a
-  refresh action (linked) or an inline balance editor (manual), and for
-  manual accounts: **+ Add transaction** (a real hand-entry form) and
-  **Import CSV** (a real file picker + parser that auto-detects date/
-  merchant/amount columns, including separate debit/credit columns, and
-  shows a preview before committing). Adding a transaction in a
-  discretionary category (Dining Out, Shopping, Entertainment,
-  Subscriptions) surfaces a one-time **"spend pause"** reflection card —
-  this month's spend in that category so far, and budget progress if
-  you've set one. Same card appears the first time you open an existing
-  discretionary transaction from this month, linked or not.
-- **Activity** — every transaction, grouped by day, searchable, tap through
-  to a detail view with an editable category, a note field, a source tag
-  (linked / manual / imported), and delete.
-- **Budgets** — per-category monthly limits with progress bars; tap any
-  category to set or edit its limit.
-- **Trends** — income vs. spending by month, a spending-by-category donut
-  with a 1/3/6-month range toggle, and a **Recurring & subscriptions**
-  card: monthly-equivalent subscriptions/bills totals, plus a per-charge
-  list flagging anything overdue past its expected date ("may have
-  lapsed"). Detected live from transaction history — works for linked,
-  manual, and CSV-imported accounts alike, not just simulated-linked ones.
-- **Settings** — linked accounts (grouped by institution, with a
-  "refresh all" that surfaces how many need attention) and manually-tracked
-  accounts, in two separate sections; a **Categories** section to add/
-  delete custom categories beyond the starter list, plus a "review
-  suggestions" flow for transactions a rules-based categorizer thinks it
-  can re-categorize out of "Other" (with a visible "why" — e.g. "matched
-  known merchant"); a **Data & Privacy** section that exports everything as
-  JSON (full backup) or CSV (transactions only) through the OS share sheet;
-  reset all local data.
-
-All data lives on-device via `AsyncStorage`. Nothing is sent anywhere unless
-you tap Export yourself.
+- **Onboarding** — a welcome screen, then a real three-way choice:
+  "Connect a bank" (real Plaid Link, native only), "Try with sample data"
+  (no signup, ~6 months of realistic mock history), or "Add manually"
+  (real form, no bank involved).
+- **Home** — a full-bleed net-worth hero (uncontained balance, full-width
+  gradient chart, a directional-change pill, and an auto-generated
+  one-line caption naming the actual biggest driver of the change — "Up
+  3% over the last 6 months — mostly from Everyday Checking, which grew
+  $2.1k in that span"), a weekly-spend chart against a trailing average,
+  a "Needs a look" card consolidating stale-account and category-
+  suggestion alerts, account balances with institution avatars and a
+  live sync-status dot, pull-to-refresh, and upcoming recurring bills.
+- **Account detail** (`/account/[id]`) — an uncontained balance + chart
+  matching Home's hero treatment, a real credit-card visual for card
+  accounts, sync status with a refresh action (linked/Plaid) or an inline
+  balance editor (manual), and for manual accounts: **+ Add transaction**
+  and **Import CSV** (auto-detects date/merchant/amount columns, including
+  separate debit/credit columns, with a preview before committing).
+- **Activity** — every transaction, grouped by day, searchable, tap
+  through to a detail view with an editable category, a note field, a
+  source tag, delete, and a "More from [Merchant]" section showing recent
+  history and average spend at that merchant.
+- **Budgets** — a progress-ring hero, per-category limits with a smart
+  setup flow that suggests a starting amount per category, and a
+  breakdown card for the last complete month.
+- **Trends** — a tabbed hero (spend-over-time / by-category) with a
+  combo boundary-line + colored-bar chart, an income-vs-spending card for
+  the last complete month, and a link out to a dedicated **Recurring**
+  page: monthly-equivalent subscription/bill totals plus a per-charge
+  list flagging anything actually overdue past its expected date.
+  Detected live from transaction history — works identically for linked,
+  manual, and CSV-imported accounts.
+- **Settings** — linked accounts (grouped by institution, refresh-all),
+  manually-tracked accounts, a Categories section (add/delete custom
+  categories, review rules-based re-categorization suggestions with a
+  visible "why"), a Data & Privacy explainer, and full JSON/CSV export.
 
 ## Docs
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the app is put
-  together, and the seam where a real bank-data provider slots in.
-- [`docs/HANDOFF.md`](docs/HANDOFF.md) — what's done, what's deliberately
-  cut for the MVP, and open decisions for the next session.
+  together: directory layout, state management, the design system, and
+  several deliberate MVP-scope decisions.
+- [`docs/PLAID_SETUP.md`](docs/PLAID_SETUP.md) — the Plaid integration:
+  why it reversed an earlier SimpleFIN decision, the security model
+  (token encryption, on-device-only transaction data), and how to test
+  against Sandbox.
+- [`docs/design-audit-copilot-parity.md`](docs/design-audit-copilot-parity.md) —
+  a self-directed UI/UX audit against Copilot/Apple/Vercel, with
+  before/after screenshots and severity-ranked findings.
+- [`docs/HANDOFF.md`](docs/HANDOFF.md) — a running dev log: what shipped
+  each session, decisions made, and open questions for the next one.
 - [`docs/competitive-analysis-copilot.md`](docs/competitive-analysis-copilot.md) —
-  brief competitive read on Copilot Money and positioning ideas for Lava
-  Money.
+  competitive read on Copilot Money and positioning ideas.
 - [`docs/STRATEGY.md`](docs/STRATEGY.md) — broader personal-finance market
-  research, product positioning, and the roadmap decisions that shaped
-  what got built and why.
+  research and the product-positioning decisions that shaped what got
+  built and why (including the SimpleFIN-vs-Plaid reversal `PLAID_SETUP.md`
+  picks back up).
+
+## Stack
+
+Expo SDK 57, React Native, TypeScript (strict), Expo Router, React Context
++ `useReducer` for state, `AsyncStorage` for on-device persistence,
+hand-rolled `react-native-svg` charts, Next.js + Prisma 7/Postgres for the
+Plaid relay backend. No analytics SDK, no ML categorization (a rules-based
+categorizer instead, deliberately explainable over black-box). See
+`docs/ARCHITECTURE.md` for the full breakdown.
