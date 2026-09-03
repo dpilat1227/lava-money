@@ -5,6 +5,7 @@ import { Amount, CategoryIcon, ProgressBar, Text } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import { findCategory } from '@/lib/mock/categories';
 import type { Category } from '@/lib/types';
+import { formatCurrency } from '@/lib/utils/currency';
 
 /**
  * The ranked-list-with-share-bar pattern first built for Dashboard's "Top
@@ -35,6 +36,12 @@ export function CategoryRankedList({
   emptyLabel?: string;
 }) {
   const rows = limit ? items.slice(0, limit) : items;
+  // `limit` is meant for callers that deliberately show a "top N" teaser
+  // next to their own "View all" link (Dashboard) -- if a caller passes
+  // one *without* an escape hatch elsewhere on the page, slicing the list
+  // and saying nothing about the rest reads as the full picture when it
+  // isn't. Surface what got cut instead of hiding it.
+  const hidden = limit ? items.slice(limit) : [];
 
   if (rows.length === 0) {
     return (
@@ -69,6 +76,11 @@ export function CategoryRankedList({
           </View>
         );
       })}
+      {hidden.length > 0 && (
+        <Text variant="caption" color={Colors.text4}>
+          +{hidden.length} more · {formatCurrency(hidden.reduce((s, c) => s + c.total, 0), { compact: true })}
+        </Text>
+      )}
     </View>
   );
 }

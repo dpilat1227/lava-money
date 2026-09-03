@@ -37,7 +37,13 @@ export function BudgetBreakdownCard() {
         Last month ({period.label}), budgeted or not
       </Text>
       <View style={{ marginTop: Spacing.lg }}>
-        <CategoryRankedList items={period.byCategory} categories={categories} periodTotal={period.total} limit={6} />
+        {/* No limit here on purpose -- see the doc comment above, "every
+            category with spend" is the entire point of this card, and
+            there's nowhere else on Budgets a cut-off category would
+            resurface. Naturally bounded anyway: there are only ever a
+            couple dozen categories at most (built-ins + whatever custom
+            ones someone's added), never an actually-long list. */}
+        <CategoryRankedList items={period.byCategory} categories={categories} periodTotal={period.total} />
       </View>
     </Card>
   );

@@ -10,7 +10,7 @@ import { AccountBalanceHero } from '@/components/account/AccountBalanceHero';
 import { CardArt } from '@/components/account/CardArt';
 import { PausePrompt } from '@/components/impause/PausePrompt';
 import { TransactionRow } from '@/components/transactions/TransactionRow';
-import { Amount, Atmosphere, Button, CategoryIcon, GlassSurface, Icon, Text } from '@/components/ui';
+import { Amount, Atmosphere, Button, CategoryIcon, EmptyState, GlassSurface, Icon, Text } from '@/components/ui';
 import { WebPageShell } from '@/components/web/DesktopShell';
 import { Breakpoints, Colors, Radius, Spacing } from '@/constants/theme';
 import { useGroupedTransactions } from '@/hooks/useFinanceSelectors';
@@ -21,18 +21,13 @@ import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { isAssetAccount, type Transaction } from '@/lib/types';
 import { parseTransactionsCsv, type ParsedTransactionRow } from '@/lib/utils/csv';
-import { formatCurrency } from '@/lib/utils/currency';
+import { daySubtotalLabel, formatCurrency } from '@/lib/utils/currency';
 import { formatDayLabel } from '@/lib/utils/date';
 import { buildPauseContext, isPauseEligible, type PauseContext } from '@/lib/utils/impause';
 import { buildAccountBalanceHistory } from '@/lib/utils/netWorth';
 import { presentSyncStatus } from '@/lib/utils/sync';
 
 type SheetName = 'none' | 'add-transaction' | 'edit-balance' | 'csv-preview';
-
-function daySubtotalLabel(txs: Transaction[]): string {
-  const net = txs.reduce((s, t) => s + t.amount, 0);
-  return `${formatCurrency(net, { compact: true })} net`;
-}
 
 export default function AccountDetailModal() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -246,11 +241,37 @@ export default function AccountDetailModal() {
         Transactions
       </Text>
       {groups.length === 0 ? (
-        <View style={styles.emptyTx}>
-          <Text variant="body" color={Colors.text3} style={{ textAlign: 'center' }}>
-            {isManual ? 'No transactions yet. Add one, or import a CSV export from your bank.' : 'No transactions on this account.'}
-          </Text>
-        </View>
+        isManual ? (
+          <View style={styles.emptyTx}>
+            <Text variant="body" color={Colors.text3} style={{ textAlign: 'center' }}>
+              No transactions yet. Add one, or import a CSV export from your bank.
+            </Text>
+          </View>
+        ) : (
+          // Design-audit follow-up: this used to be a single flat sentence
+          // and nothing else -- a real dead end for a linked account that
+          // happens to be Stale/Error (the two states where "no
+          // transactions" might just mean "hasn't synced successfully
+          // yet," not "genuinely empty"), since the only way out was
+          // scrolling back up to the status row above. Same fix as
+          // Activity's own empty state (EmptyState + icon badge), with a
+          // "Refresh now" action folded in when a refresh could plausibly
+          // help.
+          <EmptyState
+            icon={<Icon name="sync" size={22} color={Colors.text3} />}
+            title="No transactions on this account"
+            subtitle={
+              status.actionable
+                ? 'This account may not have finished syncing yet. Try refreshing the connection.'
+                : 'Transactions will show up here once there’s activity on this account.'
+            }
+            action={
+              status.actionable ? (
+                <Button label={refreshing ? 'Refreshing…' : 'Refresh now'} variant="secondary" loading={refreshing} onPress={doRefresh} />
+              ) : undefined
+            }
+          />
+        )
       ) : (
         groups.map((group, gi) => (
           <View key={group.date} style={{ marginBottom: Spacing.md }}>
@@ -258,9 +279,11 @@ export default function AccountDetailModal() {
               <Text variant="micro" weight="semibold" color={Colors.text3} style={styles.dayHeaderLabel}>
                 {formatDayLabel(group.date)}
               </Text>
-              <Text variant="micro" color={Colors.text4} style={styles.dayHeaderLabel}>
-                {daySubtotalLabel(group.transactions)}
-              </Text>
+              {group.transactions.length > 1 && (
+                <Text variant="micro" color={Colors.text4} style={styles.dayHeaderLabel}>
+                  {daySubtotalLabel(group.transactions)}
+                </Text>
+              )}
             </View>
             {group.transactions.map(tx => (
               <TransactionRow

@@ -200,7 +200,15 @@ const styles = StyleSheet.create({
   body: { flex: 1, flexDirection: 'row' },
   content: { flex: 1, minWidth: 0 },
   sidebar: {
-    width: 240,
+    // 240 (design-audit follow-up: was truncating essentially every
+    // account name -- "Everyday Checking," "High-Yield Savings," "Rewards
+    // Credit Card" -- mid-word against the balance column next to it, not
+    // just unusually long ones. Sized to comfortably fit the longest of
+    // the mock generator's fixed account-name templates (`lib/mock/
+    // generator.ts`) alongside a signed, compact balance; a genuinely long
+    // real/custom account name will still ellipsis gracefully, same as
+    // any fixed-width label eventually would).
+    width: 300,
     borderRightWidth: 1,
     borderRightColor: Colors.border1,
     paddingTop: Spacing.lg,

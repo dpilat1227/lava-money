@@ -1,4 +1,5 @@
 import { Link, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, SectionList, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
@@ -12,15 +13,10 @@ import { SAMPLE_TRANSACTIONS } from '@/lib/mock/sampleChartData';
 import { useFinance } from '@/lib/store/FinanceContext';
 import type { Account, Institution, Transaction } from '@/lib/types';
 import { findCategorySuggestions, type CategorizeResult } from '@/lib/utils/categorizer';
-import { formatCurrency } from '@/lib/utils/currency';
+import { daySubtotalLabel } from '@/lib/utils/currency';
 import { formatDayLabel } from '@/lib/utils/date';
 
 type Filter = 'all' | 'needs-review' | string;
-
-function daySubtotalLabel(txs: Transaction[]): string {
-  const net = txs.reduce((s, t) => s + t.amount, 0);
-  return `${formatCurrency(net, { compact: true })} net`;
-}
 
 export default function TransactionsScreen() {
   const [query, setQuery] = useState('');
@@ -226,43 +222,58 @@ function FilterChipsRow({
   for (const a of accounts) nameCounts.set(a.name, (nameCounts.get(a.name) ?? 0) + 1);
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.filterChipsScroll}
-      contentContainerStyle={{ paddingHorizontal: hPad, gap: Spacing.sm, alignItems: 'center' }}
-    >
-      <FilterChip label="All" active={filter === 'all'} onPress={() => select('all')} />
-      {needsReviewCount > 0 && (
-        <FilterChip label={`Needs review (${needsReviewCount})`} active={filter === 'needs-review'} onPress={() => select('needs-review')} />
-      )}
-      {accounts.map(a => {
-        // Disambiguate a colliding account name with a small colored dot in
-        // the institution's own color (same color `InstitutionAvatar` uses
-        // for that bank everywhere else) instead of appending the full
-        // institution name -- keeps the chip short even when two linked
-        // banks both call their checking account "Everyday Checking."
-        const isDuplicateName = (nameCounts.get(a.name) ?? 0) > 1;
-        const dotColor = isDuplicateName ? getInstitution(institutions, a.institutionId).color : undefined;
-        return <FilterChip key={a.id} label={a.name} dotColor={dotColor} active={filter === a.id} onPress={() => select(a.id)} />;
-      })}
+    // Design-audit follow-up: this row can overflow past one screen once
+    // there are a few linked accounts, and `showsHorizontalScrollIndicator=
+    // {false}` (the right call on mobile, where a scrollbar looks foreign)
+    // left zero hint that more chips existed -- just an abrupt edge, easy
+    // to mistake for the actual end of the list. A trailing fade is the
+    // same "there's more this way" cue iOS's own horizontal carousels use.
+    <View style={{ position: 'relative' }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterChipsScroll}
+        contentContainerStyle={{ paddingHorizontal: hPad, gap: Spacing.sm, alignItems: 'center' }}
+      >
+        <FilterChip label="All" active={filter === 'all'} onPress={() => select('all')} />
+        {needsReviewCount > 0 && (
+          <FilterChip label={`Needs review (${needsReviewCount})`} active={filter === 'needs-review'} onPress={() => select('needs-review')} />
+        )}
+        {accounts.map(a => {
+          // Disambiguate a colliding account name with a small colored dot in
+          // the institution's own color (same color `InstitutionAvatar` uses
+          // for that bank everywhere else) instead of appending the full
+          // institution name -- keeps the chip short even when two linked
+          // banks both call their checking account "Everyday Checking."
+          const isDuplicateName = (nameCounts.get(a.name) ?? 0) > 1;
+          const dotColor = isDuplicateName ? getInstitution(institutions, a.institutionId).color : undefined;
+          return <FilterChip key={a.id} label={a.name} dotColor={dotColor} active={filter === a.id} onPress={() => select(a.id)} />;
+        })}
 
-      {/* Deliberately styled unlike the filter chips above (ghost outline +
-          icon, not the active/inactive filter pattern) -- every other chip
-          in this row changes `filter` in place, this one navigates away to
-          the new /recurring page, and looking identical to its siblings
-          would read as "filter to recurring transactions," not "go see
-          your subscriptions." */}
-      <Link href="/recurring" asChild>
-        <Pressable style={styles.recurringChip}>
-          <Icon name="sync" size={12} color={Colors.text3} />
-          <Text variant="caption" weight="semibold" color={Colors.text3}>
-            Recurring
-          </Text>
-          <Icon name="chevronRight" size={10} color={Colors.text4} />
-        </Pressable>
-      </Link>
-    </ScrollView>
+        {/* Deliberately styled unlike the filter chips above (ghost outline +
+            icon, not the active/inactive filter pattern) -- every other chip
+            in this row changes `filter` in place, this one navigates away to
+            the new /recurring page, and looking identical to its siblings
+            would read as "filter to recurring transactions," not "go see
+            your subscriptions." */}
+        <Link href="/recurring" asChild>
+          <Pressable style={styles.recurringChip}>
+            <Icon name="sync" size={12} color={Colors.text3} />
+            <Text variant="caption" weight="semibold" color={Colors.text3}>
+              Recurring
+            </Text>
+            <Icon name="chevronRight" size={10} color={Colors.text4} />
+          </Pressable>
+        </Link>
+      </ScrollView>
+      <LinearGradient
+        colors={['transparent', Colors.bg]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        pointerEvents="none"
+        style={styles.filterChipsFade}
+      />
+    </View>
   );
 }
 
@@ -301,6 +312,13 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     height: 40,
     marginBottom: Spacing.sm,
+  },
+  filterChipsFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: 28,
+    height: 40,
   },
   filterChip: {
     flexDirection: 'row',

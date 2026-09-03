@@ -14,3 +14,14 @@ export function formatCurrency(amount: number, opts: { showSign?: boolean; compa
 export function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
+
+/**
+ * Shared by Activity and the account-detail transaction list -- was
+ * duplicated in both call sites, which is how the "+" sign and the
+ * single-transaction-day guard (see callers) drifted out of sync between
+ * them. One copy now; fix it once, it's fixed everywhere.
+ */
+export function daySubtotalLabel(txs: { amount: number }[]): string {
+  const net = txs.reduce((s, t) => s + t.amount, 0);
+  return `${formatCurrency(net, { showSign: true, compact: true })} net`;
+}

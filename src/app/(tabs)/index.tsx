@@ -189,7 +189,9 @@ function AccountRow({ account, balance, first }: { account: Account; balance: nu
       {attention && <View style={[styles.accountAccent, { backgroundColor: status.color }]} />}
       <InstitutionAvatar name={institution.name} color={institution.color} statusColor={status.color} pulse={status.pulse} />
       <View style={{ flex: 1 }}>
-        <Text variant="body">{account.name}</Text>
+        <Text variant="body" numberOfLines={1}>
+          {account.name}
+        </Text>
         <Text
           variant="micro"
           color={attention ? status.color : Colors.text4}

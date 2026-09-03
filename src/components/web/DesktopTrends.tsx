@@ -2,6 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { RecurringTeaserCard } from '@/components/insights/RecurringTeaserCard';
+import { CashFlowCard } from '@/components/trends/CashFlowCard';
 import { SpendingHeroCard } from '@/components/trends/SpendingHeroCard';
 import { Text } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
@@ -28,6 +29,14 @@ export function DesktopTrends() {
         <SpendingHeroCard chartHeight={200} />
       </View>
 
+      {/* Mobile parity fix (design-audit follow-up): this card shipped to
+          (tabs)/trends.tsx but never made it here, so desktop skipped
+          straight from the chart to Recurring with no income-vs-spending
+          context in between. */}
+      <View style={styles.cashFlow}>
+        <CashFlowCard />
+      </View>
+
       <View style={styles.recurring}>
         <RecurringTeaserCard />
       </View>
@@ -38,5 +47,6 @@ export function DesktopTrends() {
 const styles = StyleSheet.create({
   scroll: { padding: Spacing.xl, maxWidth: 900, width: '100%', alignSelf: 'center', paddingBottom: Spacing.xxxl },
   hero: { marginTop: Spacing.xl },
+  cashFlow: { marginTop: Spacing.section },
   recurring: { marginTop: Spacing.section },
 });

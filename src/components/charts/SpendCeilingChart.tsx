@@ -113,6 +113,11 @@ export function SpendCeilingChart({
           as the chart this replaces. */}
       <View style={{ height: height + 24 }}>
         {ceilingRatio != null && (
+          // Was Colors.text3 at 0.55 opacity -- a near-invisible hairline
+          // against saturated red/amber/green bars, which defeated the
+          // point: the color coding says "over or under," this line is
+          // supposed to show *where* the line actually is, and it needs to
+          // be legible over the very bars it's judging to do that.
           <View
             pointerEvents="none"
             style={{
@@ -120,9 +125,9 @@ export function SpendCeilingChart({
               left: 0,
               right: 0,
               bottom: 24 + ceilingRatio * height,
-              height: 1,
-              backgroundColor: Colors.text3,
-              opacity: 0.55,
+              height: 2,
+              backgroundColor: Colors.text1,
+              opacity: 0.85,
             }}
           />
         )}

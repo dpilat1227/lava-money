@@ -198,8 +198,11 @@ export function SpendingHeroCard({ chartHeight = 130 }: { chartHeight?: number }
               </Text>
             )}
           </View>
+          {/* No limit here either -- this *is* the dedicated "every
+              category" view (Dashboard's teaser links here), so capping it
+              would truncate the one screen whose whole job is to not. */}
           <View style={{ marginTop: Spacing.lg }}>
-            <CategoryRankedList items={categoryTotals} categories={categories} periodTotal={categoryGrandTotal} limit={8} />
+            <CategoryRankedList items={categoryTotals} categories={categories} periodTotal={categoryGrandTotal} />
           </View>
         </View>
       )}

@@ -7,6 +7,7 @@ import { CategoryRankedList } from '@/components/insights/CategoryRankedList';
 import { Amount, Badge, Card, CategoryIcon, Icon, Text } from '@/components/ui';
 import { Breakpoints, Colors, Spacing } from '@/constants/theme';
 import { useMonthlyIncomeVsExpense, useNetWorthHistory, useNetWorthSummary, useSpendByPeriod, useUpcomingRecurring } from '@/hooks/useFinanceSelectors';
+import { findCategory } from '@/lib/mock/categories';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { findCategorySuggestions } from '@/lib/utils/categorizer';
 import { formatCurrency } from '@/lib/utils/currency';
@@ -170,26 +171,29 @@ export function DesktopDashboard() {
             </Link>
           </View>
           <View style={{ marginTop: Spacing.sm }}>
-            {upcoming.map((r, i) => (
-              // expo-router's <Link asChild> clones this Pressable and merges
-              // its own `style` in -- an array `style` prop trips a (real, if
-              // noisy) dev warning asking for a flattened object (same fix
-              // DesktopShell.tsx's nav rows already needed).
-              <Link key={r.id} href="/recurring" asChild>
-                <Pressable style={StyleSheet.flatten([styles.upcomingRow, i > 0 && styles.upcomingRowDivider])}>
-                  <CategoryIcon id={r.categoryId} emoji="📅" color={Colors.textAccent} size={36} />
-                  <View style={{ flex: 1, marginLeft: Spacing.md }}>
-                    <Text variant="body" numberOfLines={1}>
-                      {r.merchantName}
-                    </Text>
-                    <Text variant="caption" color={Colors.text4}>
-                      {formatDayLabel(r.nextExpectedDate)}
-                    </Text>
-                  </View>
-                  <Amount amount={r.averageAmount} variant="body" />
-                </Pressable>
-              </Link>
-            ))}
+            {upcoming.map((r, i) => {
+              const category = findCategory(categories, r.categoryId);
+              return (
+                // expo-router's <Link asChild> clones this Pressable and merges
+                // its own `style` in -- an array `style` prop trips a (real, if
+                // noisy) dev warning asking for a flattened object (same fix
+                // DesktopShell.tsx's nav rows already needed).
+                <Link key={r.id} href="/recurring" asChild>
+                  <Pressable style={StyleSheet.flatten([styles.upcomingRow, i > 0 && styles.upcomingRowDivider])}>
+                    <CategoryIcon id={category.id} emoji={category.emoji} color={category.color} size={36} />
+                    <View style={{ flex: 1, marginLeft: Spacing.md }}>
+                      <Text variant="body" numberOfLines={1}>
+                        {r.merchantName}
+                      </Text>
+                      <Text variant="caption" color={Colors.text4}>
+                        {formatDayLabel(r.nextExpectedDate)}
+                      </Text>
+                    </View>
+                    <Amount amount={r.averageAmount} variant="body" />
+                  </Pressable>
+                </Link>
+              );
+            })}
           </View>
         </Card>
       )}
