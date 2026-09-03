@@ -1,3 +1,173 @@
+# Handoff — Copilot-inspired redesign, Plaid, and a design-audit pass
+
+The biggest gap between entries in this doc — several real sessions'
+worth of work landed with no write-up, because the pace was screenshot
+→ feedback → fix in tight loops rather than natural session boundaries.
+Reconstructing it here in one entry rather than backfilling several,
+since the git history (`git log --oneline`) already has the real
+per-commit granularity if you want it — this is the decisions-and-open-
+questions layer on top of that, which the commits alone don't carry.
+
+Three real arcs happened, in order:
+
+1. **A full Copilot-inspired visual redesign.** After the "premium pass"
+   below, you sent 50 Copilot Money screenshots and asked for "Copilot,
+   but black background, our navbar, our features" — borrow Copilot's
+   *structural* patterns (elevated cards, progress rings, combo charts,
+   ranked lists instead of donuts) while keeping Lava's orange-on-black
+   identity, and fix anything Copilot itself does wrong along the way
+   rather than copying flaws too. Every tab got rebuilt on this: Home,
+   Activity, Budgets, Trends (recurring moved to its own page), Settings.
+   Several older components got deleted outright rather than patched
+   (`CategoryDonut`, `FlowBarChart`, `RecurringInsightsCard`, `InsightChips`)
+   because the new patterns replaced their whole job, not just their look.
+2. **Real Plaid bank-linking, reversing the night-4 SimpleFIN decision.**
+   You asked "is anyone actually asking for manual-only data ownership as
+   a feature?" — fair challenge, and the honest answer was no one's
+   validated that anyone wants pure-manual-entry as the *main* path. Plaid
+   Link now runs for real on native (iOS/Android dev-client + TestFlight
+   builds); web stays a sample-data-only public demo, since Plaid Link is
+   native-code-only and the web build has no backend session anyway. Full
+   writeup — why, the security model, env vars, Sandbox testing — is new
+   tonight: [`docs/PLAID_SETUP.md`](PLAID_SETUP.md). Manual accounts and
+   "Try with sample data" both stayed, unchanged in spirit — this added a
+   third, real option rather than replacing the other two.
+3. **Tonight: a self-directed design-audit pass**, the task you handed
+   off before bed — review the app as a UI/UX consultant would, versus
+   Copilot/Apple/Vercel, find weak points, fix them without waiting for
+   approval. Full findings + before/after screenshots:
+   [`docs/design-audit-copilot-parity.md`](design-audit-copilot-parity.md).
+   The short version of what got fixed, roughly most-to-least severe:
+   - **"Free to spend" → "Left to spend"** on Budgets (your specific ask
+     — this was already this exact wording by the time you asked, from
+     Copilot-parity work earlier in arc 1, but flagged in the audit doc
+     as still worth double-checking against Copilot's own phrasing).
+   - A **net-worth caption that could contradict itself** — "Down 21%...
+     mostly from Everyday Checking, which *grew* $9.5k" (a real bug: the
+     "biggest mover" picker didn't check whether the mover's own direction
+     matched the headline's). Fixed in `lib/utils/netWorth.ts`.
+   - **Category color collisions** once actually swatch-tested as filled
+     circles, not just compared as hex codes — dining/entertainment,
+     subscriptions/utilities, and travel/transport/entertainment all read
+     as the same color at a glance. Two new colors (`brown`, `rose`) plus
+     reassignment fixed it (`constants/theme.ts`, `lib/mock/categories.ts`).
+   - **Several "your data never leaves this device" overclaims** that
+     Plaid (arc 2) quietly made false on native — a real Plaid connection
+     does put one thing on a server (an encrypted token). Copy across
+     Settings, the net-worth footnote, and onboarding is now platform-
+     conditional instead of repeating the pre-Plaid claim everywhere.
+   - **Account row text truncating into unreadable fragments** ("Syn...")
+     once a real institution name shared the row with sync-status text.
+   - The Transport and Shopping category icons were **hard to read at
+     actual rendered size** (a car losing its wheels, a bag reading as a
+     padlock) — both redesigned.
+   - Trends' "Over time" tab had **visible dead space** — added a new
+     `CashFlowCard` (income vs. spending, last complete month).
+   - A new `late` status for recurring charges, between "due soon" and
+     "overdue" — a charge one day past due was getting the same
+     forward-looking "Due soon" badge as one genuinely five days out.
+   - The mock generator now occasionally **lapses one subscription** on
+     purpose, so the due_soon/late/overdue states are actually
+     demonstrable in the demo instead of theoretical.
+
+Also done tonight, not really "design" but same session: found and fixed
+two real secrets-hygiene issues (an unredacted API key screenshot and the
+Copilot reference screenshots were untracked but about to be committed —
+both gitignored instead), organized the entire multi-arc diff into four
+whole-feature commits, created a public GitHub remote
+(`github.com/dpilat1227/lava-money`) and pushed everything for your job
+application, rewrote `README.md` (was describing a pre-Plaid,
+pre-redesign app), fixed `ARCHITECTURE.md`'s directory layout and
+mock-data-seam sections (same staleness), and kicked off a fresh
+production EAS build — worth calling out on its own, see below.
+
+## Every build you've seen in TestFlight so far predates all of this
+
+Checked `eas build:list` tonight: builds #9, #10, and #11 (the last
+"build ready" notification you actually got) all show the same git commit
+— `74a1071`, "Redesign Settings" — which is the *end of arc 1's per-tab
+passes, before the big Copilot-screenshot-driven rebuild even started*.
+Whatever you saw on your phone earlier tonight was several real design
+passes behind main. Builds #12 and #13 exist (kicked off later, per your
+own "the build isn't updating" message) but there's no way to fully
+confirm what they contained without their logs; either way, neither one
+could have included tonight's audit pass or the doc work, since those
+happened after.
+
+**Build #14 is running as of this writeup** (`eas build --platform ios
+--profile production`) — this is the first build that will contain arc 1,
+arc 2 (Plaid), and arc 3 (tonight) all together, no exceptions. A
+background watcher will `eas submit` it to TestFlight automatically the
+moment it finishes; check App Store Connect or your email in the morning,
+not the build log. If you open TestFlight and it still looks stale,
+check the build number shown against 14 before assuming anything's wrong.
+
+## Decisions made without you tonight (flag anything you'd reverse)
+
+1. **The audit pass fixed things, it didn't relitigate the arc-1/arc-2
+   decisions.** Nothing about the Copilot-structural-patterns direction or
+   the Plaid-over-SimpleFIN reversal was second-guessed tonight — those
+   were your calls, already made. Tonight was strictly "given those
+   decisions, what's still rough."
+2. **Privacy copy went platform-conditional rather than uniformly
+   softened.** Native's copy is now honest about Plaid's one server-side
+   token; web's copy kept the stronger "never uploaded" claim, since it's
+   still fully true there (no backend touches the web demo at all). Felt
+   more honest than picking one blended claim for both.
+3. **The mock generator's new "lapsed subscription" only ever picks a
+   subscription** (never rent, payroll, or utilities) — a lapsed paycheck
+   reads as a crisis in a demo; a lapsed streaming subscription reads as
+   Tuesday. Narrow on purpose.
+4. **`ARCHITECTURE.md` got targeted fixes, not a full rewrite** — the
+   directory layout and mock-data-seam sections (the two most concretely
+   *wrong* parts) are corrected; older narrative sections (Impause, the
+   Ember system writeup) still reference some now-deleted components as
+   accurate history of that point in time, flagged with a note at the top
+   rather than rewritten. A full rewrite felt like a lot of tonight's
+   remaining time for a doc that's secondary to the app itself — revisit
+   if it's actually going to get read closely for the job search.
+5. **Pushed to a brand-new public repo** (`lava-money`) rather than
+   reusing wherever `lava_finance` might have lived before — you'd
+   confirmed no remote existed yet, so this was the only option, not a
+   choice between two.
+
+## Open questions for you
+
+- **Does "Left to spend" actually read right**, or is there a Copilot
+  screenshot showing different exact wording worth matching more
+  precisely? Went with the audit doc's best read of "what Copilot does,"
+  not a pixel-matched copy.
+- **Is the new `docs/PLAID_SETUP.md` the kind of writeup you want
+  interviewers to actually read**, or would a shorter, more visual version
+  serve the job-application angle better than the technical-reference tone
+  it's written in now? Written to match the existing docs' voice, not
+  specifically for an interview audience.
+- Carried forward from arc 1/night 5 and still genuinely unresolved: light
+  mode (still no), an Android real-device check for `expo-blur` (web
+  preview + iOS Simulator only so far), and the "selection accent on an
+  active row" + "staggered entrance across a whole screen on first mount"
+  ideas that were queued up after the premium pass and never actually
+  built — worth checking if the Copilot-redesign arc quietly already
+  covered either of these as a side effect, or if they're still open.
+- Real bank data was the two-nights-running "biggest open question" for a
+  long time (see night 4/5 below) — **it's answered now** (Plaid, arc 2).
+  Worth reading as closed unless something about how it's landed on a
+  real device changes your mind.
+
+## Where to start next
+
+Check TestFlight for build 14 (or later — the watcher script may have
+needed to retry). On the device specifically: link a Sandbox bank via
+"Connect a bank" on a fresh install (not just "Try with sample data") to
+confirm Plaid actually works end-to-end outside of past testing sessions,
+open Budgets to see "Left to spend," and check the Home account list for
+any institution with a long name to confirm the truncation fix holds on a
+real screen width. `docs/design-audit-copilot-parity.md` has the full
+before/after screenshot set if you want the web-preview evidence before
+even opening the app.
+
+---
+
 # Handoff — "premium" pass (Ember atmosphere, blur, icon chips)
 
 Direct feedback after build 5: *"I feel like LavaMesh's landing page/
