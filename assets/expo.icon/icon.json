@@ -6,21 +6,10 @@
     {
       "layers" : [
         {
-          "image-name" : "flame-glow.svg",
-          "name" : "flame-glow",
-          "position" : {
-            "scale" : 1.4,
-            "translation-in-points" : [
-              0,
-              10
-            ]
-          }
-        },
-        {
           "image-name" : "flame-mark.svg",
           "name" : "flame-mark",
           "position" : {
-            "scale" : 0.82,
+            "scale" : 0.9,
             "translation-in-points" : [
               0,
               0
@@ -30,11 +19,11 @@
       ],
       "shadow" : {
         "kind" : "neutral",
-        "opacity" : 0.5
+        "opacity" : 0
       },
       "translucency" : {
-        "enabled" : true,
-        "value" : 0.5
+        "enabled" : false,
+        "value" : 0
       }
     }
   ],

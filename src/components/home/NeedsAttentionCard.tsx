@@ -47,7 +47,7 @@ export function NeedsAttentionCard({ attentionCount, suggestionCount, onRefreshA
   if (items.length === 0) return null;
 
   return (
-    <Card style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
+    <Card level="flat" style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
       <View style={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.sm }}>
         <Text variant="micro" weight="semibold" color={Colors.text3} style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
           Needs a look

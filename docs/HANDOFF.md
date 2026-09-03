@@ -1,3 +1,332 @@
+# Handoff — "premium" pass (Ember atmosphere, blur, icon chips)
+
+Direct feedback after build 5: *"I feel like LavaMesh's landing page/
+dashboard looks better than Lava Money currently does. How do we get this
+looking like a premium app."* Rather than guess, audited LavaMesh's actual
+web dashboard (`app/globals.css`, `StatsHero.tsx`, `NetworkTopology.tsx`,
+`IconChip.tsx` in the `lavamesh_app` repo) side-by-side with this app. The
+color tokens were already identical (`Colors`/`Elevation`/`Shadow` in
+`constants/theme.ts` were ported from that same CSS months ago) — the gap
+was entirely in *application*: LavaMesh renders an ambient gradient behind
+everything and blurs its one hero panel per screen; Lava Money sat on flat
+`Colors.bg` with plain tinted-but-unblurred cards. Ported the three most
+portable techniques from that audit, plus two smaller details that fell out
+of it. `npx tsc --noEmit` and `npx eslint src` both clean; re-verified via
+Playwright/web-preview screenshots of Home, Activity, Budgets, Trends,
+Settings.
+
+## What's done today
+
+1. **`Atmosphere`** (new: `components/ui/Atmosphere.tsx`) — a diagonal
+   near-black `expo-linear-gradient` base plus two `react-native-svg`
+   `RadialGradient` glows (warm orange top-right, ember-red bottom-left),
+   directly ported from LavaMesh's web `--atmosphere` CSS variable. Every
+   tab screen (`index.tsx`, `transactions.tsx`, `budgets.tsx`, `trends.tsx`,
+   `settings.tsx`) plus the account-detail modal now render this behind
+   their `ScrollView`/`SectionList` instead of a flat `Colors.bg` fill —
+   each screen's own root `View` kept `Colors.bg` only as a fallback in
+   case `Atmosphere` doesn't fully cover (safe-area insets, etc).
+2. **Real backdrop blur on `Card level="raised"`** (`components/ui/Card.tsx`)
+   — added `expo-blur`'s `BlurView` behind the translucent tint for the one
+   hero surface per screen (`NetWorthHero`, the Budgets summary ring card),
+   matching LavaMesh's `backdropFilter: blur(20px)` on `StatsHero`/
+   `NetworkTopology`. The tint (`Colors.surfaceCardRaised`) is now painted
+   as its own layer *on top* of the `BlurView` rather than as the
+   container's own background, so it doesn't get sampled into the blur
+   along with whatever's behind the card.
+3. **Gradient+glow "icon chip" treatment** — `CategoryIcon` and `IconBadge`
+   swapped their flat `${color}1c`-tinted circles for an `expo-linear-
+   gradient` diagonal fill (`${color}12` → `${color}30`) plus a soft colored
+   `shadowColor`/`shadowOpacity` glow, matching LavaMesh's `IconChip`
+   component. New **`InstitutionAvatar`** (`components/ui/InstitutionAvatar.tsx`)
+   consolidates the four copies of the same flat-circle institution-initial
+   avatar (Home's account rows, account detail's header, Settings' linked-
+   account rows, the link-account institution list) into one component with
+   the same treatment, plus an optional overlaid status dot.
+4. **Pulsing "synced" status dot** — `presentSyncStatus()` (`lib/utils/
+   sync.ts`) now returns a `pulse: boolean` (true only for an actual live
+   `linked` + `synced` connection, matching LavaMesh's `.status-dot.online`
+   sonar pulse) and upgraded the synced color from muted gray to `Colors.
+   green` — "synced" is a good-news state and reads better as green than as
+   the same gray used for a merely-descriptive "manual" label.
+   `InstitutionAvatar`'s status dot renders a Reanimated `withRepeat` glow
+   ring behind the dot only when `pulse` is true; stale/error/manual stay
+   static so an alarm state never looks like it's "breathing."
+5. **Tabular numerals on hero/summary money figures** — `Amount` (every
+   transaction/account-row amount) and the Home net-worth hero, its Assets/
+   Liabilities stats, and the Budgets summary ring's spent total/percentage
+   all got `fontVariant: ['tabular-nums']`, so animated `useCountUp` digits
+   don't jitter or misalign mid-count.
+
+## Decisions made
+
+- Radial gradients for `Atmosphere` use `react-native-svg` (already a
+  dependency, same technique `NetWorthHero`'s ambient glow already used)
+  rather than adding a second gradient library — `expo-linear-gradient`
+  only draws linear gradients, which is why it's still used for the
+  diagonal base layer and the icon-chip fills.
+- Kept `CategoryIcon`/`IconBadge`'s gradient+glow style duplicated between
+  the two components rather than factoring out a shared "IconChip" — their
+  props/callers differ enough (emoji-vs-glyph vs. plain icon name) that a
+  cross-cutting abstraction wouldn't cleanly fit either, and it's ~10 lines
+  either way. `InstitutionAvatar` *is* shared because all four of its call
+  sites wanted the exact same thing (name + color + optional status dot).
+- Settings' small inline status dot next to "Synced 40m ago" text was left
+  as a plain static dot (not routed through `InstitutionAvatar`) — it's a
+  secondary/label-adjacent indicator in a different layout, not the primary
+  avatar-overlay dot, and pulsing it too would be one glow too many on that
+  screen.
+
+## Open questions / next steps
+
+- Consider extending the pulsing-dot treatment to the Home "Needs attention"
+  banner's icon when there's an active `stale`/`error` account, as a
+  parallel "this needs you" signal (deliberately not pulsed here since a
+  pulsing red/amber dot reads as an alarm, not a status per decision above
+  — but a *different* motion, like a single-shot bounce, might fit better
+  than a full sonar loop).
+- `expo-blur`'s Android behavior is a native approximation; worth a real
+  Android-device check once one's available (web preview and iOS Simulator
+  both render it correctly).
+- Next real design pass candidates from the same LavaMesh audit, not done
+  yet: a selection accent (2px brand-color left border + soft tint wash) on
+  an active/selected row, and staggered fade-in-up on first mount of a
+  screen's list (today's `StaggerItem` only covers index-based delay within
+  an already-mounted list, not entrance timing across the whole screen).
+
+---
+
+# Handoff — first real-device pass on TestFlight build 5
+
+The first feedback that came from actually installing build 5 on a phone
+instead of the web preview, and it caught four things the preview couldn't:
+a header element that looked pressable but wasn't, a joke greeting that
+reads wrong out of context, brand-new accounts making every chart look
+broken rather than empty, and a budget-creation flow that felt like an
+afterthought next to Copilot's. Fixed all four, plus one screenshot-only
+Playwright-caught regression (a `console.error` filter from night 5 that
+never actually matched anything — see below). `npx tsc --noEmit` and
+`npx eslint src` both clean; re-verified via the same real Playwright/web-
+preview flow (fresh manual account, no transactions) the screenshots came
+from.
+
+## What's done today
+
+1. **Home's flame-mark "logo"** (`(tabs)/index.tsx`) was a plain bordered/
+   shadowed `View` with zero `onPress` — visually a button, functionally
+   dead weight. It's now a real `Pressable` with the same Reanimated press-
+   scale treatment `Card`/`Button` use, wired to `router.push('/settings')`
+   (`accessibilityLabel="Open settings"`).
+2. **`greetingForHour()`** (`lib/utils/date.ts`) dropped the "Still up?"
+   variant for `hour < 5` / `hour >= 22` — cute in isolation, but reads as
+   presumptuous/gimmicky on an actual phone at 12:40am. Down to four plain
+   variants (morning/afternoon/evening, evening again late).
+3. **Sample/illustrative data for brand-new accounts** — a fresh manual
+   account with zero transactions is *real* data (correctly $0 spend, flat
+   net worth), but rendered as broken-looking empty charts. New
+   `lib/mock/sampleChartData.ts` holds static illustrative curves/totals;
+   `NetWorthChart`, `FlowBarChart`, `CategoryDonut`, and
+   `RecurringInsightsCard` each take a `sample` prop that swaps in that data
+   *and* renders a `Badge` reading "Sample data" — never blended with real
+   numbers, always visibly tagged, disappears the moment any real
+   transaction exists. `hasEnoughHistoryForChart()` is the one added
+   detector (net worth history with zero variation = sample); the Trends
+   triggers just check `transactions.length`/`categoryTotals.length`.
+4. **Budgets' "Add a budget"** was a wrapped grid of tiny pill chips —
+   replaced with a full-width row list (icon, name, a static "Typically
+   ~$X/mo" suggestion from a new `SUGGESTED_DEFAULTS` map, `+` icon), which
+   also now pre-fills the edit sheet with that suggested amount instead of a
+   bare $100. Added four preset-amount chips ($50/$100/$200/$500) above the
+   manual input in `EditBudgetModal` so setting a budget rarely needs the
+   keyboard at all.
+5. **Home density**: folded the standalone Assets/Liabilities `Card` pair
+   into `NetWorthHero` itself as an inline two-column stat row (same
+   pattern `RecurringInsightsCard`'s totals row already used) — one hero
+   surface instead of hero-plus-two-more-boxes for what's really one idea
+   (net worth, broken into its two halves).
+6. **`InsightChips`'s "Spent so far" chip had no zero-guard** — unlike the
+   other three chips (subscriptions/top-category/overdue), it always
+   pushed, so a fresh account showed one lonely "$0.00 vs $0.00 avg/mo"
+   card. Now gated on `currentExpense > 0 || avgExpense > 0` like the rest.
+7. **Found and fixed the actual `console.error` filter bug from night 5**:
+   it checked `args[0].includes('transform-origin')`, but React logs that
+   warning as a `%s`-templated format string with the property name as a
+   *separate* arg — `args[0]` never contained the literal text, so the red
+   LogBox toast never got suppressed on web despite the filter existing.
+   Now checks all args.
+
+## Decisions made without you today (flag anything you'd reverse)
+
+1. **Sample data is swapped in per-chart-component, not per-screen** — each
+   of `NetWorthChart`/`FlowBarChart`/`CategoryDonut`/`RecurringInsightsCard`
+   independently decides real-vs-sample and tags itself, rather than one
+   screen-level "is this user new" flag. Slightly more prop-plumbing, but it
+   means Home's chart can go real (once net worth actually moves) while
+   Trends' donut is still sample (no transactions yet) — which is the
+   actually-true state for someone who just added a manual account with a
+   starting balance and hasn't logged spend yet.
+2. **The flame mark now navigates to Settings** rather than, say, opening a
+   dedicated profile/about sheet — there's no separate account/profile
+   concept in this app (no login), so Settings is the only "more" screen
+   that exists. Revisit if a lighter "what's new"/about popover ever makes
+   more sense than a full tab jump.
+3. **Suggested budget defaults are a static per-category table**, not
+   derived from the user's actual spending — there's no real spending
+   history to derive from for a brand-new user, and once real budgets
+   history exists the suggestion only ever matters for categories that
+   still don't have one. Revisit if that table starts feeling stale/wrong.
+
+## Open questions for you
+
+- Carried forward, still open: real bank data vs. staying demo/portfolio,
+  and whether CSV export should grow a re-importable native format. See
+  night 5's entry below for the fuller open-questions list — nothing new
+  today displaces those.
+- **Is "Sample data" the right label**, or would something like "Example"
+  or a small illustration/chart icon read clearer at a glance? Went with
+  the plainest possible word on purpose, but haven't shown it to anyone yet.
+
+## Where to start next
+
+Everything above is verifiable in the web preview: onboard, choose "Add
+manually," add one account with a balance and zero transactions, and Home/
+Trends should show "Sample data"-tagged charts instead of blank ones; add a
+budget and the edit sheet should show preset chips. On a real device, the
+web-preview-only floating tab bar isn't there, so the flame-mark tap should
+be uncontested — worth a real TestFlight rebuild once there's enough queued
+up to be worth another `eas build` (this pass alone probably doesn't justify
+one on its own).
+
+# Handoff — night 5: the 2.0 design overhaul + TestFlight build 5
+
+Picked up your design brief (make Home "beautiful... modern, pretty, not
+busy but not too minimal," beat Monarch/Copilot/YNAB/Origin, plus the app
+icon/TestFlight-banner problem from night 4's screenshots) and turned it
+into the `lava_money_2.0_design_overhaul` plan you approved, then built
+every to-do in it end to end tonight rather than a partial pass. Verified
+by `npx tsc --noEmit` clean, `npx expo lint` clean, and a full Playwright
+screenshot sweep of every screen/modal in the web preview (onboarding, add-
+account chooser, link-account flow all three states, Home, Activity
+    10|search/empty, Budgets + edit-budget modal, Trends, Settings + add-category
+modal, account detail both linked/manual, transaction detail + category
+picker, add-transaction sheet, review-categories both states) — then a
+real `eas build --profile production --platform ios` (build 5) submitted
+to App Store Connect via `eas submit`, both non-interactively, no Apple
+2FA prompt needed this time (see "credentials are stored by EAS" in
+`docs/TESTFLIGHT.md` — that prediction from night 1 held).
+
+## What's done tonight
+
+- **App icon fixed** — the actual root cause of night 4's muddy TestFlight
+    20|  banner. `assets/expo.icon/icon.json` now fills a dark ember-brown
+  `automatic-gradient` and layers two new SVGs (`flame-glow.svg` behind,
+  `flame-mark.svg` in front) through Icon Composer instead of a flat-orange
+  fill silhouette. Apple auto-generates the App Store product-page banner
+  from an icon's dominant colors, so this was never fixable by "removing a
+  background" — it needed the icon's actual palette to change.
+- **A real design-token layer**: `Elevation` (resting/raised/glass surface
+  levels), `AccentUsage` (where orange is/isn't allowed to appear), and
+  `Motion` (Reanimated spring/duration constants) added to
+  `constants/theme.ts` — see `docs/ARCHITECTURE.md`'s new "The Ember design
+    30|  system" section for the full breakdown, not repeated here.
+- **Component library rebuilt on those tokens**: `Card`/`Button` got
+  Reanimated press-scale feedback; new `Icon`/`IconBadge` (real SF Symbols/
+  Material Symbols via `expo-symbols`), `CategoryGlyph` (hand-drawn SVG
+  icons replacing emoji for the fixed category list), `GlassSurface`
+  (`expo-glass-effect` Liquid Glass with a themed fallback), `ProgressRing`,
+  and `StaggerItem` (Reanimated list-entrance) all new.
+- **Every screen and every modal repainted on the new system** — Home
+  (net-worth hero, insight chips, account rows), Activity (search bar,
+  sticky headers, empty state), Budgets (progress ring summary, row
+    40|  cards, edit modal), Trends (recurring card, category breakdown), and
+  Settings (icon rows throughout) in one pass; then add-account/link-
+  account/manual-account, add-transaction/edit-balance/CSV-preview sheets,
+  edit-budget and add-category modals, and transaction detail in a second
+  pass so nothing shipped half-migrated.
+- **A real motion pass, not just press feedback**: `useCountUp` (new,
+  `lib/hooks/`) animates the Home net-worth number, Assets/Liabilities
+  cards, and the Budgets "spent this month" figure up from their previous
+  value on change, bridging a Reanimated shared value back to React state
+    50|  so the actual currency formatting still happens in plain JS (`Intl`
+  calls aren't worklet-safe). `StaggerItem` gives Home's account/upcoming
+  rows, Budgets' rows, and Trends' category breakdown a staggered
+  fade-in-from-below entrance, capped at a max delay so it stays a
+  considered reveal rather than a slow crawl on longer lists.
+- **Build 5 shipped**: `eas build --profile production --platform ios
+  --non-interactive` (auto-incremented to build number 5) then `eas submit`
+  with `ascAppId` added to `eas.json`'s submit profile (needed for a fully
+  non-interactive submit — the interactive flow infers it, `--non-
+  interactive` can't). Both credentials (distribution cert + ASC API key)
+   60|  were already on file from build 4's interactive setup, so tonight's
+  build never touched Apple sign-in/2FA at all.
+
+## Decisions made without you tonight (flag anything you'd reverse)
+
+1. **Number count-ups are scoped to hero numbers only** (net worth,
+   Assets/Liabilities, budget total spent) — not wired into every
+   `Amount` in every transaction/budget row. A whole list counting up on
+   every scroll-into-view would read as noisy, not premium; the plan
+   specifically called out "hero values."
+2. **`StaggerItem` renders as a plain, unanimated `View` on web.**
+   70|   Reanimated's web layout-animation shim writes a raw kebab-case
+   `transform-origin` DOM style, which React logs as a console warning and
+   (via Expo's web dev-error toast) an on-screen banner obscuring the UI —
+   purely a web-preview artifact; iOS/Android use the real native
+   implementation and never hit this path. Rather than fight the shim for
+   a target this app doesn't ship to, native gets the full staggered
+   entrance and web silently skips it. Also added a narrow `console.error`
+   filter in `app/_layout.tsx` (dev + web only) for this same string, since
+   Card/Button's existing press-scale animation hits the identical shim
+    80|   quirk and there's no per-component workaround for that one.
+3. **`GlassSurface` callers must not pass `backgroundColor`/`border*` in
+   their own `style` prop** — those get merged in *after* `GlassSurface`'s
+   internal glass/fallback styling and would cover the translucency up
+   entirely. Fixed retroactively in the bottom-sheet `Sheet` wrapper (was
+   still setting an opaque `backgroundColor`, which would've silently
+   defeated the whole point of switching it to `GlassSurface`) — documented
+   in `docs/ARCHITECTURE.md` so the next new modal doesn't repeat it.
+4. **`eas.json`'s `submit.production.ios.ascAppId` is now hardcoded**
+   (`6807643939`, this app's App Store Connect app ID) instead of left
+    90|   for the interactive prompt to resolve. Fine for a single-app project;
+   would need to move to a per-target config if this ever became a
+   multi-app monorepo.
+5. Carried forward from nights 1-4 and still true: NativeTabs, onboarding
+   isn't a router route, fictional institution names, manual balances
+   don't follow transactions, budgets apply going-forward only, dark-only,
+   fixed category list plus user-added custom ones, Impause always-on for
+   its four categories, SimpleFIN-not-Plaid as the future bank-data
+   direction (still unbuilt — `lib/providers/BankProvider.ts` is still just
+   the interface stub).
+
+## Open questions for you
+
+- **How does 2.0 actually look on your phone?** Build 5 is processing in
+   100|  App Store Connect as of this write-up — check TestFlight in a few
+  minutes. Web-preview screenshots and a real device (especially the
+  Liquid Glass sheets on iOS 26, and the SF Symbols `Icon` fallback on
+  whatever iOS version you're running) can differ enough to be worth a
+  real look before calling this done.
+- **Worth a light mode eventually?** Still no — carried forward — but the
+  new `Elevation`/`AccentUsage` token layer would make one meaningfully
+  easier to add later than the ad-hoc styling it replaced, if that ever
+  changes.
+- Everything else carried forward from night 4 is still open — see that
+  section below.
+   110|
+## Where to start next
+
+Update via TestFlight once build 5 finishes processing (should already be
+there — check your email or App Store Connect directly:
+https://appstoreconnect.apple.com/apps/6807643939/testflight/ios). On the
+device, the things most worth a deliberate look: the app icon on your home
+screen (the actual bug this session started from), the Home screen's
+net-worth count-up on first load, pressing into any card (Reanimated scale
+feedback should feel snappier than the old opacity fade), and any bottom
+sheet/modal on iOS 26 if you have it (real Liquid Glass vs. the themed
+   120|fallback everywhere else).
+
+---
+
 # Handoff — night 4: the three open decisions get resolved
 
 Picked up exactly where night 3 left off: "continue onward" on the two open

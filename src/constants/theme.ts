@@ -17,8 +17,11 @@ export const Colors = {
   surfaceCard: 'rgba(255,130,60,0.05)',
   /** One step up from surfaceCard — for the single hero surface on a screen
    * (net-worth card, an in-focus row) that should read as more present than
-   * its neighbors without becoming a different component. See `Elevation`. */
-  surfaceCardRaised: 'rgba(255,140,60,0.09)',
+   * its neighbors without becoming a different component. See `Elevation`.
+   * Bumped from 0.09 -> 0.16 in the Copilot-redesign pass -- paired with a
+   * blur layer (see Card.tsx's RaisedBackdrop) this was reading as barely
+   * more present than flat/resting once those moved to solid fills. */
+  surfaceCardRaised: 'rgba(255,140,60,0.16)',
   /** Sheet/modal fill — deliberately closer to opaque than any card tint,
    * since sheets sit *above* the whole screen, not beside other cards. Used
    * as the fallback fill when `expo-glass-effect`'s native material isn't
@@ -56,8 +59,14 @@ export const Colors = {
   pinkSoft: 'rgba(244,114,182,0.12)',
 } as const;
 
-/** Category/chart palette — order matters, it's assigned round-robin to
- * categories so two adjacent categories in a legend don't collide. */
+/** General-purpose chart/series palette (institution color-hashing for
+ * Plaid, any future multi-series chart) -- NOT what categories use for
+ * their own color anymore (see CATEGORIES in lib/mock/categories.ts,
+ * which assigns each an explicit, non-repeating color instead of cycling
+ * this list, specifically to keep green/red reserved for this app's
+ * "good/bad" semantics -- income, positive change, under-budget vs. fees,
+ * negative change, over-budget). Fine for this list to include green/red;
+ * an institution or arbitrary series has no such semantic conflict. */
 export const ChartPalette = [
   Colors.orange,
   Colors.blue,
@@ -85,19 +94,33 @@ export const Spacing = {
   xl: 24,
   xxl: 32,
   xxxl: 48,
+  /** Gap between *major* blocks on a screen -- the hero and the card row
+   * below it, one card section and the next. Not used for anything inside
+   * a single card/row; this is section-level rhythm (Robinhood/Copilot
+   * both run 64-96px between blocks, not the 24-32px this app used to cap
+   * out at everywhere, which is why dense screens read as one undifferentiated
+   * wall instead of a sequence of distinct moments). */
+  section: 64,
 } as const;
 
-/** LavaMesh's web fonts (Inter / Space Grotesk / JetBrains Mono) are loaded
- * via @expo-google-fonts/* in src/app/_layout.tsx and referenced here by the
+/** LavaMesh's web fonts (Inter / JetBrains Mono) are loaded via
+ * @expo-google-fonts/* in src/app/_layout.tsx and referenced here by the
  * family names react-native-google-fonts registers them under. Falls back to
- * the system font until the async font load resolves on first paint. */
+ * the system font until the async font load resolves on first paint.
+ *
+ * Used to pair Inter (body) with Space Grotesk (display) -- two distinct
+ * grotesk families with different personalities is exactly the "generic
+ * template" tell (see the redesign-pass-2 diagnosis): Mercury/Linear/Ramp
+ * all run one family end-to-end and get hierarchy from weight/size alone.
+ * `display`/`displayBold` are now just heavier Inter cuts, not a second
+ * typeface -- page titles and hero numbers finally read as the same app. */
 export const Fonts = {
   sans: 'Inter_400Regular',
   sansMedium: 'Inter_500Medium',
   sansSemibold: 'Inter_600SemiBold',
   sansBold: 'Inter_700Bold',
-  display: 'SpaceGrotesk_600SemiBold',
-  displayBold: 'SpaceGrotesk_700Bold',
+  display: 'Inter_800ExtraBold',
+  displayBold: 'Inter_900Black',
   mono: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
   monoLoaded: 'JetBrainsMono_500Medium',
 } as const;
@@ -135,7 +158,13 @@ export const Shadow = {
  * screen could out-rank anything else. Three levels, not five: more than
  * three and the eye stops being able to tell them apart anyway.
  *
- * - `resting` — the default. Most cards, most of the time.
+ * - `flat` — multi-row list *containers* (an accounts list, a settings
+ *   section): the rows inside are the content; the container is just a
+ *   boundary, not a thing competing for attention itself. No shadow — a
+ *   drop shadow under something that's mostly hairlines-between-rows reads
+ *   as a box floating above the screen, and five of those stacked down one
+ *   scroll view is what "boxy" actually means in practice.
+ * - `resting` — the default. Single-purpose cards (one chip, one banner).
  * - `raised` — the one hero surface per screen that should read as more
  *   present (net worth, an expanded row, a selected chip).
  * - `glass` — sheets, modals, popovers: things floating *above* the screen
@@ -143,8 +172,22 @@ export const Shadow = {
  *   real Liquid Glass material and Android/web get this fill as a fallback.
  */
 export const Elevation = {
+  // Copilot-redesign pass: flat/resting used to share the exact same
+  // translucent 5%-orange-over-black tint (`surfaceCard`), which meant a
+  // card's visible contrast depended on whatever happened to be behind it
+  // (the Atmosphere gradient, scrolled content) rather than the card itself
+  // -- the opposite of Copilot's own cards, which read as solidly "there"
+  // against pure black regardless of context. Solid warm-neutral fills
+  // (`surface1`/`surface2`, already-defined Lava tones, not Copilot's navy)
+  // fix that while keeping flat < resting < raised as three genuinely
+  // different weights instead of two identical fills plus a shadow.
+  flat: {
+    backgroundColor: Colors.surface1,
+    borderColor: Colors.border1,
+    borderWidth: 1,
+  },
   resting: {
-    backgroundColor: Colors.surfaceCard,
+    backgroundColor: Colors.surface2,
     borderColor: Colors.border1,
     borderWidth: 1,
     ...Shadow.sm,
@@ -218,4 +261,19 @@ export const Motion = {
   pressScale: 0.97,
   /** Per-item delay step for staggered list entrances. */
   staggerStep: 32,
+} as const;
+
+/**
+ * Web-only layout breakpoints (see components/web/DesktopShell.tsx). The
+ * native app is always "narrow" -- these only matter for the browser demo,
+ * where the same route tree renders inside a sidebar+grid shell above
+ * `wide` and a phone-shaped single column below it.
+ */
+export const Breakpoints = {
+  /** Below this, the web build looks/behaves like the phone app (single
+   * column, bottom tab bar) so a browser window resized narrow -- or an
+   * actual mobile browser -- doesn't get a half-broken sidebar. */
+  wide: 900,
+  /** Above this, the dashboard grid gets a third column instead of two. */
+  xwide: 1280,
 } as const;

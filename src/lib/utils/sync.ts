@@ -22,21 +22,27 @@ export interface SyncPresentation {
   color: string;
   /** Whether tapping the status should offer a "Refresh now" action. */
   actionable: boolean;
+  /** Whether the status dot should breathe with a soft pulse glow --
+   * reserved for an actual live connection (`linked` + `synced`), the same
+   * "online" signal LavaMesh's web dashboard pulses on its status dots.
+   * Manual accounts and non-happy states stay static; a pulsing red/amber
+   * dot would read as an alarm, not a status. */
+  pulse: boolean;
 }
 
 export function presentSyncStatus(account: Account): SyncPresentation {
   if (account.source === 'manual') {
-    return { label: `Manual · updated ${timeAgoShort(account.lastSyncedAt)}`, color: Colors.text4, actionable: false };
+    return { label: `Manual · updated ${timeAgoShort(account.lastSyncedAt)}`, color: Colors.text4, actionable: false, pulse: false };
   }
   switch (account.syncStatus) {
     case 'synced':
-      return { label: `Synced ${timeAgoShort(account.lastSyncedAt)}`, color: Colors.text4, actionable: false };
+      return { label: `Synced ${timeAgoShort(account.lastSyncedAt)}`, color: Colors.green, actionable: false, pulse: true };
     case 'stale':
-      return { label: `Stale · last synced ${timeAgoShort(account.lastSyncedAt)}`, color: Colors.amber, actionable: true };
+      return { label: `Stale · last synced ${timeAgoShort(account.lastSyncedAt)}`, color: Colors.amber, actionable: true, pulse: false };
     case 'error':
-      return { label: `Connection issue · synced ${timeAgoShort(account.lastSyncedAt)}`, color: Colors.red, actionable: true };
+      return { label: `Connection issue · synced ${timeAgoShort(account.lastSyncedAt)}`, color: Colors.red, actionable: true, pulse: false };
     default:
-      return { label: 'Synced', color: Colors.text4, actionable: false };
+      return { label: 'Synced', color: Colors.green, actionable: false, pulse: true };
   }
 }
 

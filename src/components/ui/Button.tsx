@@ -23,9 +23,11 @@ export function Button({ label, variant = 'primary', loading, fullWidth, onPress
     <Animated.View style={[animatedStyle, { width: fullWidth ? '100%' : undefined }]}>
       <Pressable
         onPressIn={() => {
+          // eslint-disable-next-line react-hooks/immutability -- Reanimated shared values are mutated by design; this isn't React state.
           scale.value = withTiming(Motion.pressScale, { duration: Motion.duration.fast });
         }}
         onPressOut={() => {
+          // eslint-disable-next-line react-hooks/immutability -- see onPressIn above.
           scale.value = withTiming(1, { duration: Motion.duration.fast });
         }}
         onPress={e => {

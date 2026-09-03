@@ -1,8 +1,24 @@
+import { Slot } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { Platform } from 'react-native';
 
+import { DesktopShell } from '@/components/web/DesktopShell';
 import { Colors } from '@/constants/theme';
 
 export default function TabsLayout() {
+  // Web only ever renders as the public browser demo (see app/_layout.tsx's
+  // auto-seed) -- NativeTabs' web fallback looks/behaves wrong (see
+  // docs/HANDOFF.md's notes on the floating-overlay quirk), so web gets its
+  // own chrome entirely instead of trying to reuse the native tab bar.
+  // Native (iOS/Android, what actually ships) never takes this branch.
+  if (Platform.OS === 'web') {
+    return (
+      <DesktopShell>
+        <Slot />
+      </DesktopShell>
+    );
+  }
+
   return (
     <NativeTabs
       backgroundColor={Colors.surface1}

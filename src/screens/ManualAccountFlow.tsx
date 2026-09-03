@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
-import { Button, Text } from '@/components/ui';
+import { Button, Icon, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import type { AccountType } from '@/lib/types';
 
@@ -154,7 +154,7 @@ function SuccessStep({ draft, onContinue }: { draft: ManualAccountDraft; onConti
   return (
     <View style={styles.centeredFlex}>
       <View style={styles.checkCircle}>
-        <Text style={{ fontSize: 32 }}>✓</Text>
+        <Icon name="check" size={30} color={Colors.green} />
       </View>
       <Text variant="title" style={{ marginTop: Spacing.lg, textAlign: 'center' }}>
         {draft.name} added

@@ -51,6 +51,15 @@ const ICONS = {
   shield: { ios: 'checkmark.shield.fill', android: 'verified_user' },
   sync: { ios: 'arrow.triangle.2.circlepath', android: 'sync' },
   category: { ios: 'square.grid.2x2.fill', android: 'category' },
+  // Web dashboard sidebar/nav only (see components/web/DesktopShell.tsx) --
+  // native screens use NativeTabs' own sf/md pairing in (tabs)/_layout.tsx
+  // instead of going through this component.
+  home: { ios: 'house.fill', android: 'home' },
+  receipt: { ios: 'list.bullet.rectangle.fill', android: 'receipt_long' },
+  pieChart: { ios: 'chart.pie.fill', android: 'pie_chart' },
+  trendingUp: { ios: 'chart.line.uptrend.xyaxis', android: 'trending_up' },
+  gear: { ios: 'gearshape.fill', android: 'settings' },
+  logout: { ios: 'rectangle.portrait.and.arrow.right', android: 'logout' },
 } satisfies Record<string, { ios: SFSymbol; android: AndroidSymbol }>;
 
 export type IconName = keyof typeof ICONS;

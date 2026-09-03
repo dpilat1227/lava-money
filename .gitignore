@@ -41,3 +41,13 @@ example
 # generated native folders
 /ios
 /android
+.vercel
+.env*
+!.env.example
+
+# competitor reference screenshots (Copilot Money) -- internal design
+# research only, not ours to publish
+Copilot_screenshots/
+
+# contains an unredacted API key screenshot -- never commit this
+Lava_Money_Resend_API.pdf
