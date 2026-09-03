@@ -1,5 +1,5 @@
 import React from 'react';
-import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
+import Svg, { Circle, Line, Path, Polyline } from 'react-native-svg';
 
 /**
  * Hand-drawn stroke icons for the fixed seed categories -- see the "Ember"
@@ -47,11 +47,24 @@ const GLYPHS: Record<string, React.ComponentType<GlyphProps>> = {
     </Svg>
   ),
   transport: ({ size, color, strokeWidth }) => (
+    // Design-audit pass: the original had the two wheels sitting almost
+    // exactly on the body's bottom edge (both at y=16, same as the body
+    // path's own baseline) -- at this glyph's actual rendered size
+    // (~18-19px in a default-size CategoryIcon tile), that read as a
+    // rounded rectangle with no legible wheels at all, closer to a laptop
+    // or tray than a car. Bigger wheels (r 1.15 -> 2), pulled down below a
+    // shortened body band, keep the same roofline/body/wheels anatomy but
+    // actually survive being scaled down this far.
     <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Path d="M4.5 16 5.8 9.7A2.5 2.5 0 0 1 8.25 7.75h7.5A2.5 2.5 0 0 1 18.2 9.7L19.5 16" stroke={color} strokeWidth={strokeWidth} {...commonProps} />
-      <Path d="M3.5 16h17v3a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z" stroke={color} strokeWidth={strokeWidth} {...commonProps} />
-      <Circle cx="7.5" cy="16" r="1.15" fill={color} stroke="none" />
-      <Circle cx="16.5" cy="16" r="1.15" fill={color} stroke="none" />
+      <Path
+        d="M4.3 15.2 5.7 9.4A2.6 2.6 0 0 1 8.25 7.4h7.5a2.6 2.6 0 0 1 2.55 2l1.4 5.8"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        {...commonProps}
+      />
+      <Path d="M2.8 15.2h18.4v1.6a1 1 0 0 1-1 1H3.8a1 1 0 0 1-1-1z" stroke={color} strokeWidth={strokeWidth} {...commonProps} />
+      <Circle cx="7" cy="18.3" r="2" fill={color} stroke="none" />
+      <Circle cx="17" cy="18.3" r="2" fill={color} stroke="none" />
     </Svg>
   ),
   housing: ({ size, color, strokeWidth }) => (
@@ -75,9 +88,20 @@ const GLYPHS: Record<string, React.ComponentType<GlyphProps>> = {
     </Svg>
   ),
   shopping: ({ size, color, strokeWidth }) => (
+    // Design-audit pass, round 2: thickening the bag's handle stroke (round
+    // 1) wasn't enough -- swatch-testing side by side at this glyph's actual
+    // rendered size (~18-19px) confirmed *any* arc-over-a-body silhouette
+    // reads as a padlock there, no matter how the taper or handle width is
+    // tuned, because "rounded shackle sitting on a rectangle" is too strong
+    // and too common a pattern (this app's own privacy/lock icon included)
+    // to out-tune with proportions alone. A price tag is a genuinely
+    // different silhouette -- pointed vertex, flat shoulder, offset hole --
+    // that can't be mistaken for a shackle, and it fits this category's
+    // actual contents (Amazon, Target, IKEA, Best Buy: general retail, not
+    // specifically clothing) better than a shirt would.
     <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Path d="M7 8.5H17l1 12a1 1 0 0 1-1 1.1H7a1 1 0 0 1-1-1.1z" stroke={color} strokeWidth={strokeWidth} {...commonProps} />
-      <Path d="M8.5 8.5V6a3.5 3.5 0 0 1 7 0v2.5" stroke={color} strokeWidth={strokeWidth} {...commonProps} />
+      <Path d="M3 12 10 4.5h8A2 2 0 0 1 20 6.5v6.2L11.5 21 3 12z" stroke={color} strokeWidth={strokeWidth} {...commonProps} />
+      <Circle cx="15.5" cy="8.5" r="1.15" fill={color} stroke="none" />
     </Svg>
   ),
   health: ({ size, color, strokeWidth }) => (

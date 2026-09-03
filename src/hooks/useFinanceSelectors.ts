@@ -2,13 +2,28 @@ import { useMemo } from 'react';
 
 import { useFinance } from '@/lib/store/FinanceContext';
 import type { NetWorthPoint, Transaction } from '@/lib/types';
-import { currentMonthKey, monthKey } from '@/lib/utils/date';
+import {
+  addMonths,
+  addWeeks,
+  currentMonthKey,
+  formatMonthLabel,
+  formatWeekLabel,
+  formatYearLabel,
+  isoDate,
+  monthKey,
+  startOfMonth,
+  startOfWeek,
+  startOfYear,
+} from '@/lib/utils/date';
 import { buildRecurringInsights, type RecurringInsights } from '@/lib/utils/insights';
 import { buildNetWorthHistory, netWorthOf } from '@/lib/utils/netWorth';
 
-export function useNetWorthHistory(monthsBack = 6): NetWorthPoint[] {
+export function useNetWorthHistory(monthsBack = 6, granularity: 'month' | 'week' = 'month'): NetWorthPoint[] {
   const { accounts, transactions } = useFinance();
-  return useMemo(() => buildNetWorthHistory(accounts, transactions, monthsBack), [accounts, transactions, monthsBack]);
+  return useMemo(
+    () => buildNetWorthHistory(accounts, transactions, monthsBack, granularity),
+    [accounts, transactions, monthsBack, granularity]
+  );
 }
 
 export function useNetWorthSummary() {
@@ -69,10 +84,22 @@ export function useBudgetProgress(): BudgetProgress[] {
 
 export function useUpcomingRecurring(limit = 6) {
   const { recurringSeries } = useFinance();
-  return useMemo(
-    () => [...recurringSeries].sort((a, b) => (a.nextExpectedDate < b.nextExpectedDate ? -1 : 1)).slice(0, limit),
-    [recurringSeries, limit]
-  );
+  return useMemo(() => {
+    // A series whose expected date never got rolled forward (one-off
+    // detection that didn't recur again, a cancelled subscription, a
+    // false-positive match in otherwise-random spending) can end up with
+    // `nextExpectedDate` sitting in the past -- sorting by date alone put
+    // that *first*, at the top of a section titled "Upcoming," instead of
+    // excluding it. The dedicated /recurring page already has a real
+    // vocabulary for this (due_soon/late/overdue, see lib/utils/insights.ts);
+    // this is just Home's compact forward-looking teaser, so it only needs
+    // to filter, not duplicate that nuance.
+    const today = isoDate(new Date());
+    return [...recurringSeries]
+      .filter(s => s.nextExpectedDate >= today)
+      .sort((a, b) => (a.nextExpectedDate < b.nextExpectedDate ? -1 : 1))
+      .slice(0, limit);
+  }, [recurringSeries, limit]);
 }
 
 export function useRecurringInsights(): RecurringInsights {
@@ -104,21 +131,147 @@ export function useMonthlyIncomeVsExpense(monthsBack = 6): MonthlyFlow[] {
   }, [transactions, monthsBack]);
 }
 
-export function useCategorySpendTotals(monthsBack = 1): { categoryId: string; total: number }[] {
+/**
+ * Spend so far this month vs. spend *through the same day-of-month* last
+ * month -- not last month's full total. Comparing a partial current month
+ * against a complete previous one always reads as "way less than last
+ * month" for the first ~29 days of every month, which is misleading rather
+ * than useful (see `SpendingCard`'s comparison line, which used to do
+ * exactly that). This is the same "don't compare a partial period to a
+ * complete one" fix as Budgets' month-end pace projection, applied to the
+ * Home screen's spend comparison instead of extrapolated forward.
+ */
+export function useMonthToDateComparison(): { current: number; previous: number } {
   const { transactions } = useFinance();
   return useMemo(() => {
     const now = new Date();
-    const cutoff = new Date(now.getFullYear(), now.getMonth() - monthsBack + 1, 1);
+    const dayOfMonth = now.getDate();
+
+    function spendThroughDay(monthsAgo: number): number {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
+      const daysInThatMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+      const cutoffDay = Math.min(dayOfMonth, daysInThatMonth);
+      const key = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
+      return monthTransactions(transactions, key)
+        .filter(t => t.amount < 0 && Number(t.date.slice(8, 10)) <= cutoffDay)
+        .reduce((s, t) => s + Math.abs(t.amount), 0);
+    }
+
+    return { current: spendThroughDay(0), previous: spendThroughDay(1) };
+  }, [transactions]);
+}
+
+/**
+ * `completeOnly` shifts the whole "last N months" window back by one month,
+ * i.e. "last N *complete* months" instead of "the current, still-in-progress
+ * month plus N-1 previous ones." Without it, `monthsBack = 1` on the 2nd of
+ * a month returns almost nothing (one or two days of spend) which reads as
+ * broken, not as "early in the month" -- same class of bug as
+ * `useSpendByPeriod`'s own `completeOnly`, and callers that want a
+ * representative "spending by category" snapshot regardless of what day of
+ * the month it is should default to `true`.
+ */
+export function useCategorySpendTotals(monthsBack = 1, completeOnly = false): { categoryId: string; total: number }[] {
+  const { transactions } = useFinance();
+  return useMemo(() => {
+    const now = new Date();
+    const endOffset = completeOnly ? 1 : 0;
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - monthsBack + 1 - endOffset, 1);
+    const end = completeOnly ? new Date(now.getFullYear(), now.getMonth() - endOffset + 1, 1) : null;
     const totals = new Map<string, number>();
     for (const t of transactions) {
       if (t.isTransfer || t.amount >= 0) continue;
-      if (new Date(t.date + 'T00:00:00') < cutoff) continue;
+      const d = new Date(t.date + 'T00:00:00');
+      if (d < cutoff) continue;
+      if (end && d >= end) continue;
       totals.set(t.categoryId, (totals.get(t.categoryId) ?? 0) + Math.abs(t.amount));
     }
     return [...totals.entries()]
       .map(([categoryId, total]) => ({ categoryId, total }))
       .sort((a, b) => b.total - a.total);
-  }, [transactions, monthsBack]);
+  }, [transactions, monthsBack, completeOnly]);
+}
+
+export type SpendGranularity = 'week' | 'month' | 'year';
+
+export interface SpendPeriod {
+  /** ISO date of the period's start -- stable, sortable, safe as a React key
+   * and as the "selected" identity passed back through `onSelectPeriod`. */
+  key: string;
+  label: string;
+  total: number;
+  byCategory: { categoryId: string; total: number }[];
+}
+
+function periodStart(date: Date, granularity: SpendGranularity): Date {
+  if (granularity === 'week') return startOfWeek(date);
+  if (granularity === 'year') return startOfYear(date);
+  return startOfMonth(date);
+}
+
+function periodAdd(date: Date, granularity: SpendGranularity, n: number): Date {
+  if (granularity === 'week') return addWeeks(date, n);
+  if (granularity === 'year') return new Date(date.getFullYear() + n, date.getMonth(), date.getDate());
+  return addMonths(date, n);
+}
+
+function periodLabel(date: Date, granularity: SpendGranularity): string {
+  const iso = isoDate(date);
+  if (granularity === 'week') return formatWeekLabel(iso);
+  if (granularity === 'year') return formatYearLabel(iso);
+  return formatMonthLabel(iso);
+}
+
+/**
+ * Powers `CategoryStackedBarChart` on both Home and Trends -- one bar per
+ * period, each bucketed by category so the chart can stack/color segments
+ * (see docs/HANDOFF.md's Apple-Card-style redesign notes). Spend-only,
+ * non-transfer, same exclusion rules as every other spend selector here.
+ */
+/**
+ * `completeOnly` shifts the entire window back by one period, so the last
+ * entry returned is the most recently *finished* period instead of the
+ * current, still-accumulating one. Every "over time" trend view wants this
+ * -- comparing a two-day-old month against a full previous month (or
+ * plotting it as a bar a fraction of the height of every other bar) reads
+ * as "spending collapsed" or "the chart is broken," not as "it's early in
+ * the month." Live, in-progress totals still belong on screens answering
+ * "how am I doing *right now*" (Budgets' hero/list, `useMonthToDateComparison`)
+ * -- this is only for screens answering "what does my spending look like
+ * over time," where a half-finished trailing bar actively misleads.
+ */
+export function useSpendByPeriod(granularity: SpendGranularity, periods: number, options?: { completeOnly?: boolean }): SpendPeriod[] {
+  const { transactions } = useFinance();
+  const endOffset = options?.completeOnly ? 1 : 0;
+  return useMemo(() => {
+    const currentStart = periodStart(new Date(), granularity);
+    const starts: Date[] = [];
+    for (let i = periods - 1; i >= 0; i--) {
+      starts.push(periodAdd(currentStart, granularity, -(i + endOffset)));
+    }
+
+    return starts.map((start, i) => {
+      const end = i < starts.length - 1 ? starts[i + 1] : periodAdd(start, granularity, 1);
+      const byCategory = new Map<string, number>();
+      let total = 0;
+      for (const t of transactions) {
+        if (t.isTransfer || t.amount >= 0) continue;
+        const d = new Date(t.date + 'T00:00:00');
+        if (d < start || d >= end) continue;
+        const amt = Math.abs(t.amount);
+        byCategory.set(t.categoryId, (byCategory.get(t.categoryId) ?? 0) + amt);
+        total += amt;
+      }
+      return {
+        key: isoDate(start),
+        label: periodLabel(start, granularity),
+        total,
+        byCategory: [...byCategory.entries()]
+          .map(([categoryId, categoryTotal]) => ({ categoryId, total: categoryTotal }))
+          .sort((a, b) => b.total - a.total),
+      };
+    });
+  }, [transactions, granularity, periods, endOffset]);
 }
 
 /** Transactions sorted newest-first and grouped by date for a list view. */

@@ -14,17 +14,34 @@ interface Props {
   id?: string;
 }
 
-export function CategoryIcon({ emoji, color, size = 38, id }: Props) {
+/**
+ * Redesign-pass-2: was a translucent gradient *circle* (12%/30% color over
+ * the dark canvas) -- soft and pastel in exactly the way that read as
+ * "template," per the diagnosis. Copilot's own category tiles are solid,
+ * saturated, *rounded-square* fills with a white glyph on top -- crisp
+ * enough to actually color-code a dense list at a glance instead of
+ * fading into it. `${color}CC` (~80% alpha over the dark canvas, not
+ * 100%) keeps sixteen different hues from turning a transaction list into
+ * a box of crayons while still reading as a real solid fill, not a tint.
+ */
+export function CategoryIcon({ emoji, color, size = 32, id }: Props) {
   const useGlyph = hasCategoryGlyph(id);
+  const radius = Math.round(size * 0.32);
   return (
     <View
       style={[
-        styles.circle,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: `${color}1c`, borderColor: `${color}40` },
+        styles.tile,
+        {
+          width: size,
+          height: size,
+          borderRadius: radius,
+          backgroundColor: `${color}cc`,
+          shadowColor: color,
+        },
       ]}
     >
       {useGlyph ? (
-        <CategoryGlyph id={id} size={size * 0.5} color={color} strokeWidth={size < 32 ? 1.9 : 1.7} />
+        <CategoryGlyph id={id} size={size * 0.58} color="#ffffff" strokeWidth={glyphStrokeWidth(size)} />
       ) : (
         <Text style={{ fontSize: size * 0.5 }}>{emoji}</Text>
       )}
@@ -32,10 +49,28 @@ export function CategoryIcon({ emoji, color, size = 38, id }: Props) {
   );
 }
 
+/** Design-audit pass: some glyphs with more internal detail (transport's
+ * two wheels especially) were getting misread at a glance -- a car reduced
+ * to a few thin strokes at ~17px lost its wheels entirely. The old
+ * size<32 ? 1.9 : 1.7 split also had this backwards: 32 is the
+ * *default*, used constantly in every dense list (Activity, Budgets,
+ * Recurring, account transactions), while the thinner 1.7 stroke it got is
+ * the one that most needed boldening. Only genuinely large uses (the 56px
+ * transaction-detail hero) have enough room for a thinner, more elegant
+ * stroke; small chip uses (~22px, suggestion/category pickers) need the
+ * boldest stroke of all. */
+function glyphStrokeWidth(size: number): number {
+  if (size >= 48) return 1.6;
+  if (size >= 28) return 1.85;
+  return 2.1;
+}
+
 const styles = StyleSheet.create({
-  circle: {
+  tile: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
   },
 });

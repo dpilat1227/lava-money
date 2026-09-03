@@ -1,28 +1,40 @@
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { InsightChips } from '@/components/home/InsightChips';
+import { GetStartedNudge } from '@/components/home/GetStartedNudge';
 import { NeedsAttentionCard } from '@/components/home/NeedsAttentionCard';
 import { NetWorthHero } from '@/components/home/NetWorthHero';
-import { Amount, Card, FlameMark, Icon, Text } from '@/components/ui';
-import { Colors, Radius, Shadow, Spacing } from '@/constants/theme';
+import { SpendingCard } from '@/components/home/SpendingCard';
+import { Amount, Atmosphere, Card, Icon, InstitutionAvatar, StaggerItem, Text } from '@/components/ui';
+import { DesktopDashboard } from '@/components/web/DesktopDashboard';
+import { Breakpoints, Colors, Spacing } from '@/constants/theme';
 import { useUpcomingRecurring, useNetWorthHistory, useNetWorthSummary } from '@/hooks/useFinanceSelectors';
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { isAssetAccount, type Account } from '@/lib/types';
 import { findCategorySuggestions } from '@/lib/utils/categorizer';
-import { formatCurrency } from '@/lib/utils/currency';
-import { formatFullDate, greetingForHour } from '@/lib/utils/date';
 import { needsAttention, presentSyncStatus } from '@/lib/utils/sync';
+
+const RANGE_OPTIONS = [
+  { label: '1M', months: 1 },
+  { label: '3M', months: 3 },
+  { label: '6M', months: 6 },
+  { label: '1Y', months: 12 },
+] as const;
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { accounts, transactions, refreshAllLinked } = useFinance();
   const [refreshing, setRefreshing] = useState(false);
+  const [range, setRange] = useState<1 | 3 | 6 | 12>(6);
 
-  const history = useNetWorthHistory(6);
+  // Weekly, not monthly -- see buildNetWorthHistory's "granularity" note.
+  const chartHistory = useNetWorthHistory(range, 'week');
   const summary = useNetWorthSummary();
   const upcoming = useUpcomingRecurring(4);
 
@@ -38,100 +50,107 @@ export default function HomeScreen() {
     setTimeout(() => setRefreshing(false), 500);
   }, [refreshAllLinked]);
 
+  // Wide web only (see components/web/DesktopDashboard.tsx) -- checked after
+  // every hook above runs unconditionally on every render, so resizing a
+  // browser window across the breakpoint never changes the hook call order.
+  if (Platform.OS === 'web' && width >= Breakpoints.wide) {
+    return <DesktopDashboard />;
+  }
+
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={{ paddingBottom: Spacing.xxxl }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.orange} />}
-    >
-      <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
-          <Text variant="display">{greetingForHour()}</Text>
-          <Text variant="body" color={Colors.text3} style={{ marginTop: 4 }}>
-            {formatFullDate(new Date().toISOString().slice(0, 10))}
-          </Text>
-        </View>
-        <View style={styles.flameBadge}>
-          <FlameMark size={18} />
-        </View>
-      </View>
-
-      <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.lg }}>
-        <NeedsAttentionCard attentionCount={attentionCount} suggestionCount={suggestionCount} onRefreshAccounts={handleRefresh} />
-
+    <View style={styles.root}>
+      <Atmosphere />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={{ paddingBottom: Spacing.xxxl }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.orange} />}
+      >
+      {/* No header/greeting here on purpose -- Robinhood/Apple Card both
+          drop straight into the hero number with no chrome above it, and
+          that vertical space is worth more as the net-worth moment than as
+          a "Good evening" label repeated on every visit. Settings already
+          covers the one thing a header icon would have opened anyway. */}
+      <View style={{ paddingHorizontal: Spacing.lg, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
         <NetWorthHero
           netWorth={summary.netWorth}
           change={summary.change}
           accountCount={accounts.length}
-          history={history}
+          assets={summary.assets}
+          liabilities={summary.liabilities}
+          history={chartHistory}
           accounts={accounts}
           transactions={transactions}
+          range={range}
+          onRangeChange={setRange}
+          rangeOptions={RANGE_OPTIONS}
         />
 
-        <InsightChips />
+        {transactions.length === 0 ? <GetStartedNudge /> : <SpendingCard />}
 
-        <View style={{ flexDirection: 'row', gap: Spacing.md }}>
-          <Card style={{ flex: 1 }}>
-            <Text variant="caption" color={Colors.text3}>
-              Assets
-            </Text>
-            <Text variant="title" weight="bold" color={Colors.green} style={{ marginTop: 4 }}>
-              {formatCurrency(summary.assets, { compact: true })}
-            </Text>
-          </Card>
-          <Card style={{ flex: 1 }}>
-            <Text variant="caption" color={Colors.text3}>
-              Liabilities
-            </Text>
-            <Text variant="title" weight="bold" color={summary.liabilities > 0 ? Colors.red : Colors.text1} style={{ marginTop: 4 }}>
-              {formatCurrency(summary.liabilities, { compact: true })}
-            </Text>
-          </Card>
-        </View>
+        <NeedsAttentionCard attentionCount={attentionCount} suggestionCount={suggestionCount} onRefreshAccounts={handleRefresh} />
 
         <View>
           <SectionTitle title="Accounts" />
-          <View style={{ gap: Spacing.sm, marginTop: Spacing.sm }}>
-            {assetAccounts.map(a => <AccountRow key={a.id} account={a} balance={a.balance} />)}
-            {liabilityAccounts.map(a => <AccountRow key={a.id} account={a} balance={-a.balance} />)}
-          </View>
+          <Card level="flat" style={{ marginTop: Spacing.sm, gap: 0, padding: 0, overflow: 'hidden' }}>
+            {assetAccounts.map((a, i) => (
+              <StaggerItem key={a.id} index={i}>
+                <AccountRow account={a} balance={a.balance} first={i === 0} />
+              </StaggerItem>
+            ))}
+            {liabilityAccounts.map((a, i) => (
+              <StaggerItem key={a.id} index={assetAccounts.length + i}>
+                <AccountRow account={a} balance={-a.balance} first={assetAccounts.length === 0 && i === 0} />
+              </StaggerItem>
+            ))}
+          </Card>
           <Pressable onPress={() => router.push('/link-account')} style={styles.addAccountRow}>
+            <Icon name="plusCircle" size={15} color={Colors.orange} />
             <Text variant="body" color={Colors.orange} weight="semibold">
-              + Add account
+              Add account
             </Text>
           </Pressable>
         </View>
 
         {upcoming.length > 0 && (
           <View>
-            <SectionTitle title="Upcoming" />
-            <Card style={{ marginTop: Spacing.sm, gap: Spacing.sm }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <SectionTitle title="Upcoming" />
+              <Pressable onPress={() => router.push('/recurring')} hitSlop={8}>
+                <Text variant="caption" color={Colors.orange}>
+                  View all ›
+                </Text>
+              </Pressable>
+            </View>
+            <Card level="flat" style={{ marginTop: Spacing.sm, gap: Spacing.sm }}>
               {upcoming.map((r, i) => (
-                <View
-                  key={r.id}
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    paddingVertical: 6,
-                    borderTopWidth: i === 0 ? 0 : 1,
-                    borderTopColor: Colors.border1,
-                  }}
-                >
-                  <View>
-                    <Text variant="body">{r.merchantName}</Text>
-                    <Text variant="micro" color={Colors.text4}>
-                      {new Date(r.nextExpectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </Text>
-                  </View>
-                  <Amount amount={r.averageAmount} variant="body" />
-                </View>
+                <StaggerItem key={r.id} index={i}>
+                  <Pressable
+                    onPress={() => router.push('/recurring')}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      paddingVertical: 6,
+                      borderTopWidth: i === 0 ? 0 : 1,
+                      borderTopColor: Colors.border1,
+                    }}
+                  >
+                    <View>
+                      <Text variant="body">{r.merchantName}</Text>
+                      <Text variant="micro" color={Colors.text4}>
+                        {new Date(r.nextExpectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </Text>
+                    </View>
+                    <Amount amount={r.averageAmount} variant="body" />
+                  </Pressable>
+                </StaggerItem>
               ))}
             </Card>
           </View>
         )}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -143,84 +162,100 @@ function SectionTitle({ title }: { title: string }) {
   );
 }
 
-function AccountRow({ account, balance }: { account: Account; balance: number }) {
+/**
+ * One shared Card per section (Accounts), rows divided internally --
+ * matches Settings' and NeedsAttentionCard's list treatment. Was previously
+ * a separate elevated `Card` *per account*, which for anyone with 3+
+ * accounts read as a stack of identical boxes ("card soup") rather than one
+ * coherent list -- Robinhood/Copilot both render list rows flat inside a
+ * single container, reserving a full card boundary for one thing at a time.
+ */
+function AccountRow({ account, balance, first }: { account: Account; balance: number; first: boolean }) {
   const router = useRouter();
-  const institution = getInstitution(account.institutionId);
+  const { institutions } = useFinance();
+  const institution = getInstitution(institutions, account.institutionId);
   const status = presentSyncStatus(account);
+  const attention = needsAttention(account);
   return (
-    <Card onPress={() => router.push(`/account/${account.id}`)} style={styles.accountRow}>
-      <View style={styles.avatarWrap}>
-        <View style={[styles.institutionAvatar, { backgroundColor: `${institution.color}22`, borderColor: `${institution.color}44` }]}>
-          <Text variant="body" weight="bold" color={institution.color}>
-            {institution.name.charAt(0)}
-          </Text>
-        </View>
-        <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-      </View>
+    <Pressable
+      onPress={() => router.push(`/account/${account.id}`)}
+      style={({ pressed }) => [
+        styles.accountRow,
+        !first && styles.accountRowDivider,
+        attention && { backgroundColor: `${status.color}0c` },
+        pressed && { opacity: 0.7 },
+      ]}
+    >
+      {attention && <View style={[styles.accountAccent, { backgroundColor: status.color }]} />}
+      <InstitutionAvatar name={institution.name} color={institution.color} statusColor={status.color} pulse={status.pulse} />
       <View style={{ flex: 1 }}>
         <Text variant="body">{account.name}</Text>
-        <Text variant="micro" color={Colors.text4} numberOfLines={1} style={{ marginTop: 2 }}>
-          {status.label}
-          {account.creditLimit ? ` · ${formatCurrency(account.creditLimit, { compact: true })} limit` : ''}
+        <Text
+          variant="micro"
+          color={attention ? status.color : Colors.text4}
+          numberOfLines={2}
+          style={{ marginTop: 2 }}
+        >
+          {/* Institution name first, not just a sync timestamp -- two
+              linked banks can easily both name an account "Everyday
+              Checking" (real banks do this too), and the avatar's initial
+              letter is too subtle on its own to tell them apart in a list.
+              Skipped for manual accounts: `subtitle` already covers it.
+              Design-audit pass: this used to also append the *full*
+              `status.label` ("Synced 2m ago" / "Connection issue · synced
+              3d ago") and a credit-limit suffix after it -- on a real
+              institution name ("Harbor Credit Union") there's only ~3
+              characters of row width left after that prefix, so both
+              always lost the numberOfLines={1} truncation race and
+              rendered as unreadable fragments like "Syn..." or "Con...",
+              with credit limit never visible at all. The pulsing green dot
+              on the avatar already *is* the "all synced and connected"
+              signal -- healthy rows need no status text at all now. Only
+              a short word surfaces here, and only when something actually
+              needs a look (paired with the accent bar + tinted row
+              background above); full detail stays on the account page,
+              which has a whole line to itself for it. numberOfLines={2}
+              (rather than 1) is deliberate too: it only ever matters for
+              this rarer attention case, since the institution-name-only
+              case always fits on one line by itself -- letting the
+              uncommon, more important case wrap instead of truncate beats
+              forcing every row to a shared fixed height. */}
+          {account.source === 'manual' ? 'Manual' : institution.name}
+          {attention ? ` · ${account.syncStatus === 'error' ? 'Error' : 'Stale'}` : ''}
         </Text>
       </View>
       <Amount amount={balance} variant="subtitle" neutral />
       <Icon name="chevronRight" size={14} color={Colors.text4} />
-    </Card>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.lg,
-  },
-  flameBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2a1006',
-    borderWidth: 1,
-    borderColor: 'rgba(255,115,0,0.35)',
-    ...Shadow.sm,
-    shadowColor: Colors.orange,
-  },
+  scroll: { flex: 1 },
   accountRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
-    borderRadius: Radius.lg,
   },
-  avatarWrap: { width: 36, height: 36 },
-  institutionAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  accountRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border1,
   },
-  statusDot: {
+  accountAccent: {
     position: 'absolute',
-    bottom: -1,
-    right: -1,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: Colors.bg,
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 2,
   },
   addAccountRow: {
-    paddingVertical: Spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: Spacing.md,
   },
 });

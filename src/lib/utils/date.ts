@@ -18,6 +18,34 @@ export function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
+export function addWeeks(date: Date, weeks: number): Date {
+  return addDays(date, weeks * 7);
+}
+
+/** Monday-start week, to match how most bank/calendar UIs (and Apple Card's
+ * own weekly view) bucket a week -- Sunday-start would silently split a
+ * weekend's spending across two "weeks." */
+export function startOfWeek(date: Date): Date {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = d.getDay(); // 0 = Sunday
+  const diff = day === 0 ? -6 : 1 - day;
+  return addDays(d, diff);
+}
+
+export function startOfYear(date: Date): Date {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
+export function formatWeekLabel(iso: string): string {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+export function formatYearLabel(iso: string): string {
+  const d = new Date(iso + 'T00:00:00');
+  return String(d.getFullYear());
+}
+
 export function monthKey(iso: string): string {
   return iso.slice(0, 7); // YYYY-MM
 }
@@ -48,11 +76,13 @@ export function currentMonthKey(): string {
 /** Time-of-day greeting for the Home screen header -- there's no user name
  * anywhere in this app (no accounts/login, by design), so this is the one
  * lightweight way "hi" can feel like it's actually looking at a clock
- * instead of a static "Overview" label every time. */
+ * instead of a static "Overview" label every time. Deliberately just four
+ * calm, always-appropriate variants -- an earlier version had a "Still up?"
+ * quip for late night/early morning that read as gimmicky (and slightly
+ * presumptuous) rather than charming once it showed up on a real device. */
 export function greetingForHour(hour: number = new Date().getHours()): string {
-  if (hour < 5) return 'Still up?';
+  if (hour < 5) return 'Good evening';
   if (hour < 12) return 'Good morning';
   if (hour < 17) return 'Good afternoon';
-  if (hour < 22) return 'Good evening';
-  return 'Still up?';
+  return 'Good evening';
 }

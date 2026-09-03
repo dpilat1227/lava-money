@@ -57,6 +57,46 @@ export const Colors = {
   blueSoft: 'rgba(96,165,250,0.12)',
   pink: '#f472b6',
   pinkSoft: 'rgba(244,114,182,0.12)',
+
+  // Added in the design-audit pass -- CATEGORIES in lib/mock/categories.ts
+  // had grown to 11 non-reserved expense categories while ChartPalette
+  // only had 8 entries, so several were silently cycling onto the same
+  // color (dining == entertainment, transport == personal_care, groceries
+  // == travel, plus shopping landing on the same red as Fees & Interest).
+  // These give each category room for its own unique, distinct hue.
+  yellow: '#facc15',
+  yellowSoft: 'rgba(250,204,21,0.12)',
+  lime: '#a3e635',
+  limeSoft: 'rgba(163,230,53,0.12)',
+  teal: '#2dd4bf',
+  tealSoft: 'rgba(45,212,191,0.12)',
+  cyan: '#22d3ee',
+  cyanSoft: 'rgba(34,211,238,0.12)',
+  sky: '#38bdf8',
+  skySoft: 'rgba(56,189,248,0.12)',
+  indigo: '#818cf8',
+  indigoSoft: 'rgba(129,140,248,0.12)',
+  fuchsia: '#e879f9',
+  fuchsiaSoft: 'rgba(232,121,249,0.12)',
+
+  // Design-audit pass round 2 -- swatch-testing the round-1 palette above
+  // surfaced two more collisions once actually rendered as filled circles
+  // (hue-degree math said these were "far enough apart," but perceived
+  // similarity doesn't track hue degrees linearly): subscriptions'
+  // `yellow` sat next to utilities' `amber` closely enough to read as the
+  // same gold at a glance, and entertainment's `indigo` clustered with
+  // transport's `blue` and travel's `sky` into one indistinct blue-purple
+  // blob. `brown` gives subscriptions its own lane; `rose` gives
+  // entertainment one too, chosen specifically far from `red` (subscriptions
+  // and entertainment are both routine, non-alarming spend -- a rose that
+  // reads as "a shade of red" would wrongly borrow this app's fee/overspend
+  // signal color). `pink` (`institutions.ts`, `ChartPalette`) is a
+  // different, lighter hue and stays as-is -- this is deliberately a
+  // separate token, not a rename.
+  brown: '#b8763e',
+  brownSoft: 'rgba(184,118,62,0.12)',
+  rose: '#ec4899',
+  roseSoft: 'rgba(236,72,153,0.12)',
 } as const;
 
 /** General-purpose chart/series palette (institution color-hashing for
@@ -75,6 +115,15 @@ export const ChartPalette = [
   Colors.amber,
   Colors.pink,
   Colors.red,
+  Colors.teal,
+  Colors.indigo,
+  Colors.lime,
+  Colors.cyan,
+  Colors.sky,
+  Colors.fuchsia,
+  Colors.yellow,
+  Colors.brown,
+  Colors.rose,
   Colors.textAccent,
 ] as const;
 

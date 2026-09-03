@@ -1,21 +1,41 @@
-import { Colors, ChartPalette } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 import type { Category } from '@/lib/types';
 
+// Each expense category gets its own explicit, non-repeating color --
+// previously these cycled through an 8-entry ChartPalette by index, which
+// silently collided once the list grew past 8 (dining == entertainment,
+// transport == personal_care, groceries == travel, shopping == the same
+// red as Fees & Interest). Green and red are deliberately never assigned
+// to a regular expense category -- this app uses both as "good/bad"
+// signals everywhere else (income, positive net worth change, under vs.
+// over budget), so Rent showing the same green as Income, or Shopping
+// showing the same red as an actual fee, read as meaningful when they
+// weren't -- worse than a generic collision between two ordinary categories.
+//
+// Round 2 (design-audit pass): swatch-rendering round 1's assignments as
+// actual filled circles -- not just comparing hex/hue values on paper --
+// surfaced two more collisions that hue-degree math alone didn't predict:
+// subscriptions' yellow sat close enough to utilities' amber to read as the
+// same gold, and entertainment's indigo blurred into transport's blue and
+// travel's sky as one blue-purple cluster. Fixed by giving subscriptions
+// its own `brown` and entertainment its own `rose` (see theme.ts for why
+// `rose` isn't just reusing the existing `pink` token), and shifting travel
+// from `sky` to the `indigo` that freed up.
 export const CATEGORIES: Category[] = [
   { id: 'income', name: 'Income', emoji: '💰', color: Colors.green, group: 'income' },
   { id: 'transfer', name: 'Transfer', emoji: '↔️', color: Colors.text4, group: 'transfer' },
 
-  { id: 'groceries', name: 'Groceries', emoji: '🛒', color: ChartPalette[0], group: 'expense' },
-  { id: 'dining', name: 'Dining Out', emoji: '🍜', color: ChartPalette[1], group: 'expense' },
-  { id: 'transport', name: 'Transport', emoji: '🚗', color: ChartPalette[2], group: 'expense' },
-  { id: 'housing', name: 'Rent & Housing', emoji: '🏠', color: ChartPalette[3], group: 'expense' },
-  { id: 'utilities', name: 'Utilities', emoji: '💡', color: ChartPalette[4], group: 'expense' },
-  { id: 'subscriptions', name: 'Subscriptions', emoji: '📺', color: ChartPalette[5], group: 'expense' },
-  { id: 'shopping', name: 'Shopping', emoji: '🛍️', color: ChartPalette[6], group: 'expense' },
-  { id: 'health', name: 'Health & Fitness', emoji: '💪', color: ChartPalette[7], group: 'expense' },
-  { id: 'travel', name: 'Travel', emoji: '✈️', color: ChartPalette[0], group: 'expense' },
-  { id: 'entertainment', name: 'Entertainment', emoji: '🎬', color: ChartPalette[1], group: 'expense' },
-  { id: 'personal_care', name: 'Personal Care', emoji: '🧴', color: ChartPalette[2], group: 'expense' },
+  { id: 'groceries', name: 'Groceries', emoji: '🛒', color: Colors.orange, group: 'expense' },
+  { id: 'dining', name: 'Dining Out', emoji: '🍜', color: Colors.fuchsia, group: 'expense' },
+  { id: 'transport', name: 'Transport', emoji: '🚗', color: Colors.blue, group: 'expense' },
+  { id: 'housing', name: 'Rent & Housing', emoji: '🏠', color: Colors.purple, group: 'expense' },
+  { id: 'utilities', name: 'Utilities', emoji: '💡', color: Colors.amber, group: 'expense' },
+  { id: 'subscriptions', name: 'Subscriptions', emoji: '📺', color: Colors.brown, group: 'expense' },
+  { id: 'shopping', name: 'Shopping', emoji: '🛍️', color: Colors.lime, group: 'expense' },
+  { id: 'health', name: 'Health & Fitness', emoji: '💪', color: Colors.cyan, group: 'expense' },
+  { id: 'travel', name: 'Travel', emoji: '✈️', color: Colors.indigo, group: 'expense' },
+  { id: 'entertainment', name: 'Entertainment', emoji: '🎬', color: Colors.rose, group: 'expense' },
+  { id: 'personal_care', name: 'Personal Care', emoji: '🧴', color: Colors.teal, group: 'expense' },
   { id: 'fees', name: 'Fees & Interest', emoji: '🏦', color: Colors.red, group: 'expense' },
   { id: 'other', name: 'Other', emoji: '📦', color: Colors.text3, group: 'expense' },
 ];

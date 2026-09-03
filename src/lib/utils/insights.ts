@@ -9,7 +9,7 @@
  */
 import type { RecurringCadence, RecurringSeries } from '@/lib/types';
 
-export type RecurringStatus = 'active' | 'due_soon' | 'overdue';
+export type RecurringStatus = 'active' | 'due_soon' | 'late' | 'overdue';
 
 export interface RecurringInsightItem {
   series: RecurringSeries;
@@ -49,6 +49,14 @@ function daysFromToday(iso: string): number {
 
 function statusFor(series: RecurringSeries, daysUntil: number): RecurringStatus {
   if (daysUntil < -GRACE_DAYS[series.cadence]) return 'overdue';
+  // Design-audit pass: this used to fall straight through to 'due_soon' for
+  // *any* daysUntil <= 5, including negative ones -- so a charge one day
+  // past its expected date got the same forward-looking "due soon" badge as
+  // one genuinely five days out, while the card's own caption (`relativeDue`
+  // in RecurringGrid) correctly said "1d overdue" right next to it. Same
+  // number, two contradictory tenses on one card. 'late' names the zone
+  // between "hasn't happened yet, but will soon" and "likely lapsed."
+  if (daysUntil < 0) return 'late';
   if (daysUntil <= DUE_SOON_DAYS) return 'due_soon';
   return 'active';
 }
