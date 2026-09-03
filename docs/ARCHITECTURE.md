@@ -43,7 +43,10 @@ src/
                         for hand-added accounts
   components/
     ui/                 Design-system primitives (Text, Card, Amount, Button,
-                        ProgressBar, Badge, CategoryIcon, EmptyState, ScreenHeader)
+                        ProgressBar, ProgressRing, Badge, CategoryIcon,
+                        CategoryGlyph, Icon, IconBadge, GlassSurface,
+                        StaggerItem, EmptyState, ScreenHeader, FlameMark) --
+                        see "The Ember design system" below
     charts/             NetWorthChart, CategoryDonut, FlowBarChart
     insights/           RecurringInsightsCard -- the Trends-screen "recurring
                         & subscriptions" surface (see below)
@@ -121,7 +124,11 @@ src/
     useFinanceSelectors.ts  Derived data: net worth history, budget progress,
                             monthly income/expense, grouped transactions,
                             recurring insights, etc.
-  constants/theme.ts    Design tokens ported from LavaMesh's `app/globals.css`
+    useCountUp.ts (in lib/hooks/)  Reanimated count-up bridged to React state
+                            for animated hero numbers -- see "The Ember
+                            design system" below.
+  constants/theme.ts    Design tokens ported from LavaMesh's `app/globals.css`,
+                        extended with Elevation/AccentUsage/Motion for 2.0
 ```
 
 ## Why onboarding isn't a router screen
@@ -350,17 +357,22 @@ projection logic later. `app/(tabs)/index.tsx` composes three new
 
 - `NetWorthHero.tsx`: the net-worth card, now with an ambient SVG radial
   glow behind the number (brand warmth, not a generic drop shadow), a
-  directional change pill (▲/▼), an explicit "calculated on this device,
-  never uploaded" line — the one sentence that actually differentiates this
-  app from a competitor screenshot, so it earns a permanent spot on the
-  first screen rather than a Settings toggle — and a one-line auto-generated
-  caption under the chart (`buildTrendCaption()`, same file) naming the
-  single biggest driver of the period's net-worth change via
-  `lib/utils/netWorth.ts`'s `biggestNetWorthMover()`. This is deliberately
-  *not* a step toward Origin-style forecasting — it's plain-language framing
-  of data already on hand, no projection math, no milestones. Real
-  forecasting (if it happens) is a separate, later feature that needs to
-  earn its own accuracy bar first.
+  directional change pill (an `Icon` arrow, not a text glyph), an explicit
+  "calculated on this device, never uploaded" line — the one sentence that
+  actually differentiates this app from a competitor screenshot, so it
+  earns a permanent spot on the first screen rather than a Settings
+  toggle — and a one-line auto-generated caption under the chart
+  (`buildTrendCaption()`, same file) naming the single biggest driver of
+  the period's net-worth change via `lib/utils/netWorth.ts`'s
+  `biggestNetWorthMover()`. This is deliberately *not* a step toward
+  Origin-style forecasting — it's plain-language framing of data already on
+  hand, no projection math, no milestones. Real forecasting (if it happens)
+  is a separate, later feature that needs to earn its own accuracy bar
+  first. Also renders the Assets/Liabilities split as an inline two-column
+  stat row below the chart (folded in from two standalone `Card`s on
+  `index.tsx` — see "Real-device feedback fixes" below) and swaps in
+  illustrative sample data for the chart itself when real history is flat
+  (see the same section).
 - `InsightChips.tsx`: a horizontal row of small facts pulled from data the
   app was already computing elsewhere for Trends (subscriptions total via
   `useRecurringInsights()`, top category via `useCategorySpendTotals(1)`,
@@ -384,6 +396,202 @@ projection logic later. `app/(tabs)/index.tsx` composes three new
   the same `refreshAllLinked()` the attention banner already used — tapping
   the banner and pulling down do the same thing through the same code path.
 
+## The Ember design system (the "2.0" visual overhaul)
+
+Night 4's Home rework (above) was the first taste of "lit from within by
+the flame" instead of flat cards on black; the 2.0 pass took that same idea
+— one light source, real depth instead of flat fills, vector iconography
+instead of emoji, orange spent deliberately rather than sprinkled — and
+extended it to every screen, every modal, and the app icon itself. See the
+`lava_money_2.0_design_overhaul` plan for the full audit and rationale;
+this section is the as-built reference.
+
+- **App icon** (`assets/expo.icon/`): `icon.json` now fills a dark ember-
+  brown `automatic-gradient` instead of flat orange, and layers two SVGs —
+  `flame-glow.svg` (a soft radial-gradient glow, scaled larger, behind) and
+  `flame-mark.svg` (the actual flame, linear-gradient fill, scaled down, in
+  front) — through Icon Composer's layer/shadow/translucency system. Fixes
+  the muddy brown-orange TestFlight product-page banner Apple was
+  auto-generating from the old flat-orange icon's dominant colors.
+- **`constants/theme.ts` tokens**: `Elevation` (`resting` / `raised` /
+  `glass` — background tint + border + shadow bundled per level, so "this
+  card is the one hero surface on the screen" is one prop, not five
+  one-off style overrides), `AccentUsage` (documents where orange is/isn't
+  allowed — brand mark, hero metric, primary action, selected state,
+  warning/danger use amber/red instead — so it stays an *accent*, not
+  competing with itself across a screen), and `Motion` (Reanimated spring
+  configs `snappy`/`gentle`/`settle`, duration constants, `pressScale`,
+  `staggerStep` — one shared vocabulary instead of every component picking
+  its own animation numbers).
+- **New/rebuilt primitives in `components/ui/`**:
+  - `Card`: takes a `level` prop (`Elevation` key) and an optional
+    `onPress`, which switches it to a `Pressable` + `Animated.View` with
+    Reanimated scale-down/up feedback (`Motion.pressScale`) and a light
+    haptic — every pressable card in the app (account rows, budget rows,
+    institution rows, insight chips) gets this for free instead of each
+    screen wiring its own `Pressable`.
+  - `Button`: same Reanimated press-scale treatment, replacing the old
+    plain-opacity press state.
+  - `Icon` / `IconBadge`: `Icon` wraps `expo-symbols`' `SymbolView` —  real
+    SF Symbols on iOS, Material Symbols on Android/web, with a small dot
+    fallback if a symbol name doesn't resolve on a given OS version.
+    `IconBadge` is `Icon` inside a tinted circular badge (institution/
+    category-style), used anywhere a settings row or empty state needs a
+    small icon-in-a-circle instead of raw emoji.
+  - `CategoryGlyph` / `CategoryIcon`: `CategoryGlyph` is a small
+    hand-drawn `react-native-svg` icon set (stroke-based, one per fixed
+    starter category). `CategoryIcon` now takes an optional `id` and
+    prefers rendering the matching `CategoryGlyph` when one exists,
+    falling back to its `emoji` prop otherwise — so fixed categories get
+    vector icons everywhere (Activity, Budgets, Trends, transaction
+    detail, add-transaction sheet) while custom user-created categories
+    (which only ever have an emoji, chosen at creation) still render fine.
+  - `GlassSurface`: wraps `expo-glass-effect`'s `GlassView` on iOS when
+    `isGlassEffectAPIAvailable()` (iOS 26 Liquid Glass), falling back to a
+    plain `View` styled with `Elevation.glass` everywhere else (Android,
+    web, older iOS). Used for every bottom sheet and modal card (add
+    transaction, edit balance, CSV preview, edit budget, add category) —
+    depth through real translucency where the OS supports it, a
+    convincing tinted-dark fallback where it doesn't. Important: any
+    `style` passed to `GlassSurface` should stick to layout properties
+    (padding, radius overrides) and avoid `backgroundColor`/`borderColor`/
+    `borderWidth`, since those are applied *after* `GlassSurface`'s own
+    fallback/glass styling in the merge order and would blot out the
+    translucency it exists to provide.
+  - `ProgressRing`: a radial SVG progress indicator (the Budgets summary
+    card's "% of total budget spent" ring) — `ProgressBar`'s circular
+    sibling, same over-100%-turns-red rule.
+  - `ProgressBar`: now animates its fill width with Reanimated
+    (`withTiming`, skippable via `animate={false}` for a live preview like
+    the edit-budget modal) and carries a colored glow shadow instead of a
+    flat fill.
+  - `StaggerItem`: wraps a list row in an `Animated.View` with a
+    `FadeInDown` entrance, delayed by `index * Motion.staggerStep` (capped
+    via `maxDelay` so long/virtualized lists don't leave far-down rows
+    waiting over a second). Used for Home's account/upcoming rows and
+    insight chips, Budgets' rows, and Trends' category breakdown — bounded
+    lists where an incremental per-item delay reads as a considered
+    entrance rather than random flicker. Renders as a plain `View` with no
+    animation on web (see "Known limitations" below for why).
+  - `lib/hooks/useCountUp.ts`: drives a number from its previous value to
+    a new target with a Reanimated timing curve, bridging the animated
+    value back to plain React state via `useAnimatedReaction` +
+    `runOnJS` (Intl currency formatting isn't worklet-safe, so the actual
+    `formatCurrency()` call always happens on the JS thread against a
+    normal number, not inside a worklet). Wired into the Home net-worth
+    hero, its inline Assets/Liabilities stats, and the Budgets summary's
+    "spent this month" figure — the handful of hero numbers the plan
+    called out, not every number in every list row (a transaction list
+    constantly counting up on every scroll would read as noisy, not
+    premium).
+- **Screen-by-screen**: every tab (Home, Activity, Budgets, Trends,
+  Settings) and every modal/sheet (add account chooser, link-account flow,
+  manual-account flow, add-transaction sheet, edit-balance sheet, CSV
+  preview sheet, edit-budget modal, add-category modal, transaction
+  detail, account detail) was passed through this same set of primitives —
+  emoji swapped for `CategoryIcon`/`Icon`/`IconBadge`, flat cards promoted
+  to the right `Elevation` level, and destructive rows (unlink account,
+  remove account, delete transaction) got a leading `Icon` (`trash`) to
+  match Settings' treatment instead of text-only red rows.
+
+## Real-device feedback fixes (first TestFlight pass)
+
+The web preview can't catch everything — the first pass of feedback from
+build 5 actually installed on a phone surfaced a few things the preview
+never would have:
+
+- **`lib/mock/sampleChartData.ts`**: static, purely illustrative chart data
+  (a net-worth curve, monthly income/expense, category totals, a few
+  recurring-charge rows) for the specific case a brand-new account with
+  real balances but zero transactions makes every chart component render
+  as flat/blank — technically correct, but reads as "broken," not "empty."
+  `NetWorthChart`, `FlowBarChart`, `CategoryDonut`, and
+  `RecurringInsightsCard` each accept a `sample?: boolean` prop that swaps
+  in this data instead of the real (empty/flat) input *and* renders a
+  `Badge` reading "Sample data" — the tag is load-bearing, not decorative,
+  since this is the only place in the app allowed to show numbers that
+  aren't the user's own. The moment any real signal exists (a transaction,
+  net-worth history with actual variation), the real caller-supplied data
+  takes over completely; nothing blends. `hasEnoughHistoryForChart()` (same
+  file) is the one non-trivial trigger — net-worth history with zero
+  variance across points, which is exactly what `buildNetWorthHistory()`
+  produces for an account with no transactions to "unwind." The Trends
+  triggers are simpler direct checks (`transactions.length`,
+  `categoryTotals.length`) inline in `trends.tsx`.
+- **The Home header's flame mark** (`(tabs)/index.tsx`) looked like a
+  button (bordered, shadowed, sized like a tap target) but had no
+  `onPress` — now a real `Pressable` with the same Reanimated press-scale
+  feedback `Card`/`Button` use, routed to `router.push('/settings')` since
+  there's no separate profile/account concept to send it to instead.
+- **`greetingForHour()`** (`lib/utils/date.ts`) dropped its "Still up?"
+  variant for very late/early hours — read as gimmicky rather than
+  charming once it showed up mid-testing at 12:40am. Down to three plain
+  time-of-day variants plus one late-evening repeat.
+- **`InsightChips`'s pace chip** ("$X spent so far, vs $Y avg/mo") was the
+  one chip of four with no zero-guard, so a brand-new account always
+  rendered one lonely, uninformative $0.00-vs-$0.00 card. Gated on
+  `currentExpense > 0 || avgExpense > 0` like the other three chips already
+  were.
+- **Budgets' "Add a budget"** went from a wrapped grid of small pill chips
+  to a full-width row list (icon, category name, a static "Typically
+  ~$X/mo" hint from a new `SUGGESTED_DEFAULTS` table) with a trailing `+`
+  icon — closer to how Copilot presents category selection. The edit sheet
+  now pre-fills that suggested amount for a brand-new budget instead of a
+  bare `$100`, and gained four preset-amount chips ($50/$100/$200/$500)
+  above the manual input.
+
+## "Premium" pass — atmosphere, blur, icon chips
+
+Prompted by "LavaMesh's dashboard looks better than Lava Money" — an audit
+of that web dashboard's actual CSS/components (`lavamesh_app` repo:
+`app/globals.css`, `components/ui/StatsHero.tsx`, `components/
+NetworkTopology.tsx`, `components/ui/IconChip.tsx`) found the color tokens
+were already identical (this app's `Colors`/`Elevation`/`Shadow` were
+ported from that CSS earlier in the project), so the gap was entirely in
+application, not palette. Ported the highest-leverage pieces:
+
+- **`components/ui/Atmosphere.tsx`** (new): a diagonal near-black
+  `expo-linear-gradient` base plus two `react-native-svg` `RadialGradient`
+  glows (orange top-right, ember-red bottom-left), matching LavaMesh's web
+  `--atmosphere` CSS variable pixel-for-pixel in stop colors/opacities.
+  `react-native-svg` (not a new gradient library) draws the radial glows
+  since RN has no native radial-gradient primitive and `NetWorthHero`'s
+  existing ambient glow already used the same technique. Every tab screen
+  and the account-detail modal render one `<Atmosphere />` behind their
+  scroll content instead of a flat `Colors.bg` fill; each screen's root
+  `View` keeps `Colors.bg` only as an underlying fallback.
+- **`Card`'s `raised` level now blurs** (`components/ui/Card.tsx`): a new
+  internal `RaisedBackdrop` renders `expo-blur`'s `BlurView` behind the
+  card's content, with the `Colors.surfaceCardRaised` tint painted as a
+  *separate* layer on top of the blur (not as the container's own
+  `backgroundColor`) — otherwise the tint would get captured into the blur
+  sample along with the atmosphere/content behind the card instead of
+  reading as a distinct glass layer floating above it. Only `raised` cards
+  pay this cost (`NetWorthHero`, the Budgets summary ring); `resting` and
+  `glass` levels are untouched.
+- **`components/ui/InstitutionAvatar.tsx`** (new): consolidates what were
+  four independent copies of the same flat `${color}22`-tinted circle
+  (Home's account rows, account detail's header, Settings' linked-account
+  rows, `screens/LinkAccountFlow.tsx`'s institution picker) into one
+  component with a diagonal gradient fill + colored glow shadow (LavaMesh's
+  `IconChip` treatment) and an optional overlaid status dot. `CategoryIcon`
+  and `IconBadge` got the same gradient+glow treatment applied directly
+  (kept duplicated rather than factored into a shared component, since
+  their emoji/glyph/icon-name props differ enough that a shared
+  abstraction wouldn't cleanly fit either one).
+- **Pulsing status dot**: `presentSyncStatus()` (`lib/utils/sync.ts`) gained
+  a `pulse: boolean` field (true only for `linked` + `synced`, matching
+  LavaMesh's `.status-dot.online` sonar-ring pulse) and the synced color
+  moved from muted gray to `Colors.green`. `InstitutionAvatar`'s
+  `StatusDot` sub-component renders a Reanimated `withRepeat`/`withTiming`
+  glow ring behind the dot only when `pulse` is set; stale/error/manual
+  states stay static so an attention-needed state never reads as "alive"
+  rather than "wrong."
+- **Tabular numerals**: `Amount` and the Home hero's net-worth/Assets/
+  Liabilities figures and the Budgets summary's spent total/percentage all
+  got `fontVariant: ['tabular-nums']`, so `useCountUp`'s per-frame digit
+  changes don't visually jitter or misalign width mid-animation.
+
 ## Known limitations (deliberate, for an MVP)
 
 - No light mode. LavaMesh itself has no light mode; matching that was a
@@ -395,8 +603,15 @@ projection logic later. `app/(tabs)/index.tsx` composes three new
   across the generated window; they're never paid down in the mock data.
 - No auth, no multi-user, no cloud sync — single local user, single device.
 - `react-native-svg`'s `<G rotation origin>` (used by the category donut)
-  logs a harmless `transform-origin` DOM-property warning on the **web**
-  target only; doesn't occur on iOS/Android, which are the actual targets.
+  and Reanimated's web layout-animation shim (`StaggerItem`'s `FadeInDown`,
+  Card/Button's press-scale `useAnimatedStyle`) both log a harmless
+  `transform-origin` DOM-property warning on the **web** target only —
+  doesn't occur on iOS/Android, which are the actual ship targets and use
+  the real native implementations. `StaggerItem` skips its entrance
+  animation entirely on web (renders a plain `View`) rather than fight the
+  shim, and `app/_layout.tsx` filters this specific `console.error` string
+  in dev so the web preview's error overlay doesn't obscure the UI while
+  testing — neither workaround touches native behavior.
 - Manual account balances and their transaction history are independent —
   adding/importing/deleting transactions on a manual account never
   recalculates its balance. This mirrors how people actually use a manual

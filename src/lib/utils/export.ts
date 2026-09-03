@@ -61,7 +61,8 @@ export async function exportAllDataAsJson(state: ExportableState): Promise<boole
 export async function exportTransactionsAsCsv(
   transactions: Transaction[],
   accounts: Account[],
-  categories: Category[]
+  categories: Category[],
+  institutions: Institution[]
 ): Promise<boolean> {
   const accountById = new Map(accounts.map(a => [a.id, a]));
   const rows = [...transactions]
@@ -73,7 +74,7 @@ export async function exportTransactionsAsCsv(
         merchantName: t.merchantName,
         amount: t.amount,
         categoryName: findCategory(categories, t.categoryId).name,
-        accountName: account ? `${account.name} (${getInstitution(account.institutionId).name})` : 'Unknown',
+        accountName: account ? `${account.name} (${getInstitution(institutions, account.institutionId).name})` : 'Unknown',
       };
     });
   return shareTextFile('lava-money-transactions.csv', 'text/csv', transactionsToCsv(rows));

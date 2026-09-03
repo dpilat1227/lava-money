@@ -2,13 +2,20 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AccountBalanceHero } from '@/components/account/AccountBalanceHero';
+import { CardArt } from '@/components/account/CardArt';
 import { PausePrompt } from '@/components/impause/PausePrompt';
-import { Amount, Button, CategoryIcon, Text } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { TransactionRow } from '@/components/transactions/TransactionRow';
+import { Amount, Atmosphere, Button, CategoryIcon, GlassSurface, Icon, Text } from '@/components/ui';
+import { WebPageShell } from '@/components/web/DesktopShell';
+import { Breakpoints, Colors, Radius, Spacing } from '@/constants/theme';
+import { useGroupedTransactions } from '@/hooks/useFinanceSelectors';
+import { useEscapeToClose } from '@/lib/hooks/useEscapeToClose';
+import { usePlaidLink } from '@/lib/hooks/usePlaidLink';
 import { findCategory } from '@/lib/mock/categories';
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
@@ -17,23 +24,23 @@ import { parseTransactionsCsv, type ParsedTransactionRow } from '@/lib/utils/csv
 import { formatCurrency } from '@/lib/utils/currency';
 import { formatDayLabel } from '@/lib/utils/date';
 import { buildPauseContext, isPauseEligible, type PauseContext } from '@/lib/utils/impause';
+import { buildAccountBalanceHistory } from '@/lib/utils/netWorth';
 import { presentSyncStatus } from '@/lib/utils/sync';
 
 type SheetName = 'none' | 'add-transaction' | 'edit-balance' | 'csv-preview';
 
+function daySubtotalLabel(txs: Transaction[]): string {
+  const net = txs.reduce((s, t) => s + t.amount, 0);
+  return `${formatCurrency(net, { compact: true })} net`;
+}
+
 export default function AccountDetailModal() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const {
-    accounts,
-    transactions,
-    categories,
-    budgets,
-    unlinkAccount,
-    refreshAccount,
-    importTransactions,
-    acknowledgePause,
-  } = useFinance();
+  const { width } = useWindowDimensions();
+  const isWideWeb = Platform.OS === 'web' && width >= Breakpoints.wide;
+  const { accounts, institutions, transactions, categories, budgets, unlinkAccount, refreshAccount, importTransactions, acknowledgePause } = useFinance();
+  const { refreshPlaidItem, unlinkPlaidItem } = usePlaidLink();
   const [sheet, setSheet] = useState<SheetName>('none');
   const [refreshing, setRefreshing] = useState(false);
   const [csvPreview, setCsvPreview] = useState<{ fileName: string; rows: ParsedTransactionRow[]; warnings: string[] } | null>(null);
@@ -41,6 +48,9 @@ export default function AccountDetailModal() {
   const [pausePrompt, setPausePrompt] = useState<{ transactionId: string; context: PauseContext } | null>(null);
 
   const account = accounts.find(a => a.id === id);
+  const groups = useGroupedTransactions('', account?.id);
+  const history = useMemo(() => (account ? buildAccountBalanceHistory(account, transactions, 6) : []), [account, transactions]);
+
   if (!account) {
     return (
       <SafeAreaView style={styles.root}>
@@ -53,15 +63,21 @@ export default function AccountDetailModal() {
     );
   }
 
-  const institution = getInstitution(account.institutionId);
+  const institution = getInstitution(institutions, account.institutionId);
   const isManual = account.source === 'manual';
+  const isCard = account.type === 'credit_card';
   const status = presentSyncStatus(account);
-  const accountTx = transactions.filter(t => t.accountId === account.id).sort((a, b) => (a.date < b.date ? 1 : -1));
   const displayBalance = isAssetAccount(account.type) ? account.balance : -account.balance;
 
   const doRefresh = () => {
     setRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    // Real Plaid connections sync for real; mock-linked accounts keep the
+    // simulated delay/random-failure behavior they've always had.
+    if (account.plaidItemId) {
+      refreshPlaidItem(account.plaidItemId).finally(() => setRefreshing(false));
+      return;
+    }
     setTimeout(() => {
       refreshAccount(account.id);
       setRefreshing(false);
@@ -121,12 +137,29 @@ export default function AccountDetailModal() {
   };
 
   const confirmUnlink = () => {
-    Alert.alert(isManual ? 'Remove account' : 'Unlink account', `Remove ${account.name} and its transaction history from this device?`, [
+    const plaidItemId = account.plaidItemId;
+    const message = plaidItemId
+      ? `This will disconnect every account from this bank connection, not just ${account.name}. Remove it and its transaction history from this device?`
+      : `Remove ${account.name} and its transaction history from this device?`;
+    Alert.alert(isManual ? 'Remove account' : 'Unlink account', message, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: isManual ? 'Remove' : 'Unlink',
         style: 'destructive',
-        onPress: () => {
+        onPress: async () => {
+          // Only remove locally once the real Item is actually revoked --
+          // Plaid bills per active Item monthly, so a lost network call
+          // here should mean "still shows as linked, try again," not a UI
+          // that quietly moves on while the connection (and its cost)
+          // keeps existing server-side with no way left to reach it.
+          if (plaidItemId) {
+            try {
+              await unlinkPlaidItem(plaidItemId);
+            } catch {
+              Alert.alert('Could not unlink', 'Check your connection and try again.');
+              return;
+            }
+          }
           unlinkAccount(account.id);
           router.back();
         },
@@ -134,118 +167,129 @@ export default function AccountDetailModal() {
     ]);
   };
 
-  return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text variant="body" color={Colors.text3}>
-            Close
-          </Text>
-        </Pressable>
-      </View>
-
-      <ScrollView contentContainerStyle={{ paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxxl }}>
-        <View style={styles.centered}>
-          <View style={[styles.institutionDot, { backgroundColor: institution.color }]} />
-          <Text variant="title" style={{ marginTop: Spacing.md, textAlign: 'center' }}>
+  const hero = (
+    <View style={{ alignItems: 'center' }}>
+      {isCard ? (
+        <>
+          <CardArt institutionName={institution.name} accountName={account.name} mask={account.mask} color={institution.color} />
+          <View style={{ marginTop: Spacing.lg, alignItems: 'center' }}>
+            <Amount amount={displayBalance} variant="display" neutral />
+            {account.creditLimit ? (
+              <Text variant="caption" color={Colors.text4} style={{ marginTop: 2 }}>
+                of {formatCurrency(account.creditLimit, { compact: true })} limit
+              </Text>
+            ) : null}
+          </View>
+        </>
+      ) : (
+        <>
+          <Text variant="caption" color={Colors.text3}>
             {account.name}
           </Text>
-          <Text variant="micro" color={Colors.text4} style={{ marginTop: 2 }}>
-            {institution.name} {isManual ? '' : `•••• ${account.mask}`}
+          <View style={{ marginTop: 2, width: '100%' }}>
+            <AccountBalanceHero balance={displayBalance} color={institution.color} history={history} />
+          </View>
+          <Text variant="micro" color={Colors.text4} style={{ marginTop: Spacing.sm }}>
+            {institution.name}
+            {isManual ? '' : ` •••• ${account.mask}`}
           </Text>
-          <View style={{ marginTop: Spacing.sm }}>
-            <Amount amount={displayBalance} variant="display" neutral />
-          </View>
-          {account.creditLimit ? (
-            <Text variant="caption" color={Colors.text4} style={{ marginTop: 2 }}>
-              of {formatCurrency(account.creditLimit, { compact: true })} limit
-            </Text>
-          ) : null}
+        </>
+      )}
+    </View>
+  );
+
+  const body = (
+    <>
+      {hero}
+
+      <View style={styles.statusRow}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+          <View style={[styles.statusDot, { backgroundColor: status.color }]} />
+          <Text variant="caption" color={status.color}>
+            {status.label}
+          </Text>
         </View>
-
-        <View style={styles.statusRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-            <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-            <Text variant="caption" color={status.color}>
-              {status.label}
+        {isManual ? (
+          <Pressable onPress={() => setSheet('edit-balance')}>
+            <Text variant="caption" color={Colors.orange} weight="semibold">
+              Edit balance
             </Text>
-          </View>
-          {isManual ? (
-            <Pressable onPress={() => setSheet('edit-balance')}>
-              <Text variant="caption" color={Colors.orange} weight="semibold">
-                Edit balance
-              </Text>
-            </Pressable>
-          ) : status.actionable || refreshing ? (
-            <Pressable onPress={doRefresh} disabled={refreshing} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              {refreshing ? <ActivityIndicator size="small" color={Colors.orange} /> : null}
-              <Text variant="caption" color={Colors.orange} weight="semibold">
-                {refreshing ? 'Refreshing…' : 'Refresh now'}
-              </Text>
-            </Pressable>
-          ) : (
-            <Pressable onPress={doRefresh}>
-              <Text variant="caption" color={Colors.text4}>
-                Refresh
-              </Text>
-            </Pressable>
-          )}
-        </View>
-
-        {isManual && (
-          <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg }}>
-            <View style={{ flex: 1 }}>
-              <Button label="+ Add transaction" variant="secondary" fullWidth onPress={() => setSheet('add-transaction')} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Button label="Import CSV" variant="secondary" fullWidth onPress={pickCsv} />
-            </View>
-          </View>
-        )}
-
-        <Text variant="caption" color={Colors.text3} style={{ marginTop: Spacing.xl, marginBottom: Spacing.sm }}>
-          Transactions
-        </Text>
-        {accountTx.length === 0 ? (
-          <View style={styles.emptyTx}>
-            <Text variant="body" color={Colors.text3} style={{ textAlign: 'center' }}>
-              {isManual ? 'No transactions yet. Add one, or import a CSV export from your bank.' : 'No transactions on this account.'}
+          </Pressable>
+        ) : status.actionable || refreshing ? (
+          <Pressable onPress={doRefresh} disabled={refreshing} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {refreshing ? <ActivityIndicator size="small" color={Colors.orange} /> : null}
+            <Text variant="caption" color={Colors.orange} weight="semibold">
+              {refreshing ? 'Refreshing…' : 'Refresh now'}
             </Text>
-          </View>
+          </Pressable>
         ) : (
-          accountTx.map(tx => {
-            const category = findCategory(categories, tx.categoryId);
-            return (
-              <Pressable key={tx.id} style={styles.txRow} onPress={() => router.push(`/transaction/${tx.id}`)}>
-                <CategoryIcon emoji={category.emoji} color={category.color} size={32} />
-                <View style={{ flex: 1, marginLeft: Spacing.md }}>
-                  <Text variant="body" numberOfLines={1}>
-                    {tx.merchantName}
-                  </Text>
-                  <Text variant="micro" color={Colors.text4}>
-                    {formatDayLabel(tx.date)} · {category.name}
-                    {tx.entrySource === 'import' ? ' · Imported' : tx.entrySource === 'manual' ? ' · Manual' : ''}
-                  </Text>
-                </View>
-                <Amount amount={tx.amount} />
-              </Pressable>
-            );
-          })
+          <Pressable onPress={doRefresh}>
+            <Text variant="caption" color={Colors.text4}>
+              Refresh
+            </Text>
+          </Pressable>
         )}
+      </View>
 
-        <Pressable onPress={confirmUnlink} style={styles.dangerRow}>
-          <Text variant="body" color={Colors.red} weight="semibold">
-            {isManual ? 'Remove account' : 'Unlink account'}
+      {isManual && (
+        <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg }}>
+          <View style={{ flex: 1 }}>
+            <Button label="+ Add transaction" variant="secondary" fullWidth onPress={() => setSheet('add-transaction')} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button label="Import CSV" variant="secondary" fullWidth onPress={pickCsv} />
+          </View>
+        </View>
+      )}
+
+      <Text variant="caption" color={Colors.text3} style={{ marginTop: Spacing.xl, marginBottom: Spacing.sm }}>
+        Transactions
+      </Text>
+      {groups.length === 0 ? (
+        <View style={styles.emptyTx}>
+          <Text variant="body" color={Colors.text3} style={{ textAlign: 'center' }}>
+            {isManual ? 'No transactions yet. Add one, or import a CSV export from your bank.' : 'No transactions on this account.'}
           </Text>
-        </Pressable>
-      </ScrollView>
+        </View>
+      ) : (
+        groups.map((group, gi) => (
+          <View key={group.date} style={{ marginBottom: Spacing.md }}>
+            <View style={[styles.dayHeaderRow, gi > 0 && { marginTop: Spacing.sm }]}>
+              <Text variant="micro" weight="semibold" color={Colors.text3} style={styles.dayHeaderLabel}>
+                {formatDayLabel(group.date)}
+              </Text>
+              <Text variant="micro" color={Colors.text4} style={styles.dayHeaderLabel}>
+                {daySubtotalLabel(group.transactions)}
+              </Text>
+            </View>
+            {group.transactions.map(tx => (
+              <TransactionRow
+                key={tx.id}
+                tx={tx}
+                categories={categories}
+                onPress={() => router.push(`/transaction/${tx.id}`)}
+                statusNote={tx.entrySource === 'import' ? 'Imported' : tx.entrySource === 'manual' ? 'Manual' : undefined}
+              />
+            ))}
+          </View>
+        ))
+      )}
 
+      <Pressable onPress={confirmUnlink} style={styles.dangerRow}>
+        <Icon name="trash" size={15} color={Colors.red} />
+        <Text variant="body" color={Colors.red} weight="semibold">
+          {isManual ? 'Remove account' : 'Unlink account'}
+        </Text>
+      </Pressable>
+    </>
+  );
+
+  const sheets = (
+    <>
       {sheet === 'add-transaction' && (
         <AddTransactionSheet accountId={account.id} onClose={() => setSheet('none')} onAdded={handleTransactionAdded} />
       )}
-      {sheet === 'edit-balance' && (
-        <EditBalanceSheet account={account} onClose={() => setSheet('none')} />
-      )}
+      {sheet === 'edit-balance' && <EditBalanceSheet account={account} onClose={() => setSheet('none')} />}
       {sheet === 'csv-preview' && csvPreview && (
         <CsvPreviewSheet
           preview={csvPreview}
@@ -266,6 +310,46 @@ export default function AccountDetailModal() {
           }}
         />
       )}
+    </>
+  );
+
+  // Wide web only: this route is a sibling Stack.Screen outside the
+  // `(tabs)` group (see app/_layout.tsx), so it used to render chrome-less
+  // full-screen with no sidebar at all -- per Drew's call, this should read
+  // as a real section of the app (like dashboard), not a small popup, so it
+  // gets the same sidebar shell + max-width column as everywhere else
+  // instead of a centered `Dialog` (contrast with transaction/[id].tsx).
+  if (isWideWeb) {
+    return (
+      <WebPageShell>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.webScroll}>
+          <Pressable onPress={() => router.back()} style={styles.webBackRow} hitSlop={8}>
+            <Icon name="chevronLeft" size={13} color={Colors.text3} />
+            <Text variant="caption" color={Colors.text3}>
+              Back
+            </Text>
+          </Pressable>
+          {body}
+        </ScrollView>
+        {sheets}
+      </WebPageShell>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      <Atmosphere />
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Text variant="body" color={Colors.text3}>
+            Close
+          </Text>
+        </Pressable>
+      </View>
+
+      <ScrollView contentContainerStyle={{ paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxxl }}>{body}</ScrollView>
+
+      {sheets}
     </SafeAreaView>
   );
 }
@@ -344,8 +428,8 @@ function AddTransactionSheet({
             onPress={() => setCategoryId(c.id)}
             style={[sheetStyles.categoryPill, c.id === categoryId && { borderColor: c.color, backgroundColor: `${c.color}18` }]}
           >
-            <Text style={{ fontSize: 13 }}>{c.emoji}</Text>
-            <Text variant="micro" color={Colors.text2}>
+            <CategoryIcon id={c.id} emoji={c.emoji} color={c.color} size={18} />
+            <Text variant="micro" weight="medium" color={c.id === categoryId ? c.color : Colors.text2}>
               {c.name}
             </Text>
           </Pressable>
@@ -482,10 +566,11 @@ function CsvPreviewSheet({
 }
 
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEscapeToClose(onClose);
   return (
     <View style={sheetStyles.overlay}>
       <Pressable style={sheetStyles.backdrop} onPress={onClose} />
-      <View style={sheetStyles.sheet}>
+      <GlassSurface radius={Radius.xl} style={sheetStyles.sheet}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
           <Text variant="title">{title}</Text>
           <Pressable onPress={onClose} hitSlop={12}>
@@ -495,7 +580,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
           </Pressable>
         </View>
         {children}
-      </View>
+      </GlassSurface>
     </View>
   );
 }
@@ -512,27 +597,27 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg },
   header: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.sm, alignItems: 'flex-end' },
   centered: { alignItems: 'center', marginBottom: Spacing.lg },
-  institutionDot: { width: 14, height: 14, borderRadius: 7 },
+  webScroll: { padding: Spacing.xl, maxWidth: 720, width: '100%', alignSelf: 'center', paddingBottom: Spacing.xxxl },
+  webBackRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: Spacing.lg, alignSelf: 'flex-start' },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: Spacing.xl,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm + 2,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.surfaceCard,
+    backgroundColor: Colors.surface1,
     borderWidth: 1,
     borderColor: Colors.border1,
   },
   statusDot: { width: 7, height: 7, borderRadius: 3.5 },
   emptyTx: { paddingVertical: Spacing.xl, paddingHorizontal: Spacing.md },
-  txRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border1,
-  },
+  dayHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  dayHeaderLabel: { paddingBottom: Spacing.xs, textTransform: 'uppercase', letterSpacing: 0.5 },
   dangerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
     marginTop: Spacing.xl,
     paddingVertical: Spacing.md,
     borderRadius: Radius.lg,
@@ -545,13 +630,19 @@ const sheetStyles = StyleSheet.create({
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end' },
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.55)' },
   sheet: {
-    backgroundColor: Colors.surface1,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
-    borderWidth: 1,
-    borderColor: Colors.border2,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     padding: Spacing.lg,
     paddingBottom: Spacing.xl,
+    // No-op on mobile (screen width is already under this) -- on web-wide
+    // this was stretching edge-to-edge across the whole browser window
+    // behind the sidebar shell, the same full-bleed-popup bug fixed
+    // elsewhere for transaction/account/link-account modals.
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
   },
   input: {
     backgroundColor: Colors.surface2,

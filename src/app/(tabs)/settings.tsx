@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 
-import { CategoryIcon, Card, Icon, IconBadge, ScreenHeader, Text, type IconName } from '@/components/ui';
-import { ChartPalette, Colors, Radius, Spacing } from '@/constants/theme';
+import { Atmosphere, CategoryIcon, Card, GlassSurface, Icon, IconBadge, InstitutionAvatar, ScreenHeader, Text, type IconName } from '@/components/ui';
+import { Breakpoints, ChartPalette, Colors, Radius, Spacing } from '@/constants/theme';
+import { useEscapeToClose } from '@/lib/hooks/useEscapeToClose';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatCurrency } from '@/lib/utils/currency';
 import { exportAllDataAsJson, exportTransactionsAsCsv } from '@/lib/utils/export';
@@ -28,6 +29,7 @@ export default function SettingsScreen() {
   } = useFinance();
   const [exporting, setExporting] = useState<'json' | 'csv' | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
+  const [showDataInfo, setShowDataInfo] = useState(false);
 
   const linkedAccounts = accounts.filter(a => a.source === 'linked');
   const manualAccounts = accounts.filter(a => a.source === 'manual');
@@ -53,7 +55,7 @@ export default function SettingsScreen() {
               budgets,
               customCategories,
             })
-          : await exportTransactionsAsCsv(transactions, accounts, categories);
+          : await exportTransactionsAsCsv(transactions, accounts, categories, institutions);
       if (!ok) Alert.alert('Export unavailable', "Sharing isn't available on this device.");
     } catch {
       Alert.alert('Export failed', 'Something went wrong putting that file together.');
@@ -63,7 +65,9 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
+    <View style={styles.root}>
+      <Atmosphere />
+      <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
       <ScreenHeader title="Settings" />
 
       <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.lg }}>
@@ -77,7 +81,7 @@ export default function SettingsScreen() {
                 </Text>
               </Pressable>
             </View>
-            <Card style={{ gap: Spacing.sm }}>
+            <Card level="flat" style={{ gap: Spacing.sm }}>
               {institutions
                 .filter(inst => linkedAccounts.some(a => a.institutionId === inst.id))
                 .map(inst => (
@@ -91,16 +95,7 @@ export default function SettingsScreen() {
                         const status = presentSyncStatus(a);
                         return (
                           <Pressable key={a.id} onPress={() => router.push(`/account/${a.id}`)} style={styles.accountRow}>
-                            <View
-                              style={[
-                                styles.institutionDot,
-                                { backgroundColor: `${inst.color}22`, borderColor: `${inst.color}44` },
-                              ]}
-                            >
-                              <Text variant="micro" weight="bold" color={inst.color}>
-                                {inst.name.charAt(0)}
-                              </Text>
-                            </View>
+                            <InstitutionAvatar name={inst.name} color={inst.color} size={30} />
                             <View style={{ flex: 1, marginLeft: Spacing.sm }}>
                               <Text variant="body">{a.name}</Text>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
@@ -125,7 +120,7 @@ export default function SettingsScreen() {
         {manualAccounts.length > 0 && (
           <View>
             <SectionLabel text="Manually tracked" />
-            <Card style={{ gap: Spacing.sm }}>
+            <Card level="flat" style={{ gap: Spacing.sm }}>
               {manualAccounts.map(a => (
                 <Pressable key={a.id} onPress={() => router.push(`/account/${a.id}`)} style={styles.accountRow}>
                   <IconBadge name="card" color={Colors.text3} size={30} />
@@ -146,37 +141,48 @@ export default function SettingsScreen() {
 
         <Pressable onPress={() => router.push('/link-account')} style={styles.linkButton}>
           <Icon name="plusCircle" size={16} color={Colors.orange} />
-          <Text variant="body" color={Colors.orange} weight="semibold">
+          <Text variant="body" color={Colors.text2} weight="semibold">
             Add account
           </Text>
         </Pressable>
 
         <View>
           <SectionLabel text="Data & privacy" />
-          <Card style={{ gap: Spacing.md }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md }}>
-              <IconBadge name="shield" color={Colors.green} size={34} />
-              <Text variant="body" color={Colors.text2} style={{ flex: 1 }}>
-                Everything in Lava Money — linked or manual — is stored only on this device. Nothing is uploaded
-                anywhere unless you export it yourself.
+          <Card level="flat" style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
+            {/* Was a static line -- the one sentence that's actually this
+                app's whole reason for existing deserved to be more than a
+                caption nobody taps, especially next to two rows that *are*
+                tappable right below it. Opens a real explanation instead
+                of just asserting it. */}
+            <Pressable onPress={() => setShowDataInfo(true)} style={styles.privacyRow}>
+              <IconBadge name="shield" color={Colors.green} size={30} />
+              <Text variant="body" color={Colors.text2} style={{ flex: 1, marginLeft: Spacing.sm }}>
+                {/* Platform-specific, not just the web claim reused everywhere --
+                    a real Plaid connection on native does put one thing on a
+                    server (an encrypted token, see DataInfoModal below), so
+                    "never uploaded" is only unconditionally true for the
+                    web demo. Overclaiming here directly under a row that then
+                    explains the actual, more nuanced mechanism would read as
+                    the teaser contradicting its own explanation. */}
+                {Platform.OS === 'web' ? 'Stored only on this device — never uploaded.' : 'Local-first, even with linked banks — tap to see how.'}
               </Text>
-            </View>
-            <View style={{ gap: Spacing.sm }}>
-              <ExportRow
-                icon="doc"
-                label="Export all data (JSON)"
-                sublabel="A full backup of every account and transaction."
-                loading={exporting === 'json'}
-                onPress={() => runExport('json')}
-              />
-              <ExportRow
-                icon="export"
-                label="Export transactions (CSV)"
-                sublabel="Opens in Excel, Sheets, or Numbers."
-                loading={exporting === 'csv'}
-                onPress={() => runExport('csv')}
-              />
-            </View>
+              <Icon name="chevronRight" size={13} color={Colors.text4} />
+            </Pressable>
+            <ExportRow
+              icon="doc"
+              label="Export all data (JSON)"
+              sublabel="Full backup"
+              loading={exporting === 'json'}
+              onPress={() => runExport('json')}
+            />
+            <ExportRow
+              icon="export"
+              label="Export transactions (CSV)"
+              sublabel="Excel, Sheets, Numbers"
+              loading={exporting === 'csv'}
+              onPress={() => runExport('csv')}
+              last
+            />
           </Card>
         </View>
 
@@ -185,22 +191,24 @@ export default function SettingsScreen() {
             <SectionLabel text="Categories" />
             <Pressable onPress={() => setAddingCategory(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Icon name="plus" size={13} color={Colors.orange} />
-              <Text variant="caption" color={Colors.orange} weight="semibold">
+              <Text variant="caption" color={Colors.text2} weight="semibold">
                 Add
               </Text>
             </Pressable>
           </View>
-          <Card style={{ gap: Spacing.sm }}>
+          <Card level="flat" style={{ gap: Spacing.sm }}>
+            <Text variant="micro" color={Colors.text4}>
+              Custom categories show up everywhere the starter list does -- Activity, Budgets, and Trends -- and can be edited or removed anytime.
+            </Text>
             {customCategories.length === 0 ? (
               <Text variant="body" color={Colors.text3}>
-                No custom categories yet. The starter list covers most spending — add one for anything it&apos;s missing
-                (Pets, Kids, Hobbies, whatever fits your life).
+                No custom categories yet — add one for anything the starter list is missing.
               </Text>
             ) : (
               customCategories.map(c => (
                 <View key={c.id} style={styles.categoryRow}>
                   <CategoryIcon id={c.id} emoji={c.emoji} color={c.color} size={30} />
-                  <Text variant="body" style={{ flex: 1, marginLeft: Spacing.md }}>
+                  <Text variant="body" weight="medium" color={c.color} style={{ flex: 1, marginLeft: Spacing.md }}>
                     {c.name}
                   </Text>
                   <Pressable
@@ -227,31 +235,12 @@ export default function SettingsScreen() {
         </View>
 
         <View>
-          <SectionLabel text="Appearance" />
-          <Card style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <IconBadge name="moon" color={Colors.textAccent} size={34} />
-            <View style={{ marginLeft: Spacing.md }}>
-              <Text variant="body">Dark</Text>
-              <Text variant="micro" color={Colors.text4} style={{ marginTop: 2 }}>
-                Lava Money is dark-only for now, to match LavaMesh.
-              </Text>
-            </View>
-          </Card>
-        </View>
-
-        <View>
           <SectionLabel text="About" />
-          <Card style={{ gap: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: 2 }}>
-              <Icon name="info" size={15} color={Colors.text3} />
-              <Text variant="caption" weight="semibold" color={Colors.text3}>
-                App info
-              </Text>
-            </View>
+          <Card level="flat" style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
             <InfoRow label="Version" value="0.2.0" />
-            <InfoRow label="Bank connections" value="Simulated demo data" />
-            <InfoRow label="Manual accounts" value="Real — yours to edit" />
-            <InfoRow label="Built by" value="Lava Money" />
+            <InfoRow label="Appearance" value="Dark" />
+            <InfoRow label="Bank connections" value={Platform.OS === 'web' ? 'Simulated demo data' : 'Real, via Plaid'} />
+            <InfoRow label="Manual accounts" value="Real — yours to edit" last />
           </Card>
         </View>
 
@@ -279,7 +268,94 @@ export default function SettingsScreen() {
           }}
         />
       )}
-    </ScrollView>
+      {showDataInfo && <DataInfoModal onClose={() => setShowDataInfo(false)} />}
+      </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * The actual substance behind "stored only on this device" -- what that
+ * means for linked vs. manual accounts specifically, and what leaving the
+ * device requires (an export you trigger, never anything automatic). Every
+ * other privacy-forward local-first competitor asserts the slogan; this is
+ * the one screen that explains the mechanism, which is the harder, more
+ * trust-earning claim to actually back up.
+ */
+function DataInfoModal({ onClose }: { onClose: () => void }) {
+  useEscapeToClose(onClose);
+  const points: { icon: IconName; color: string; title: string; body: string }[] = [
+    {
+      icon: 'lock',
+      color: Colors.green,
+      title: 'Your transactions and balances live on this device',
+      body:
+        Platform.OS === 'web'
+          ? 'Accounts, balances, transactions, budgets, and categories are all stored locally -- there is no Lava Money server holding a copy.'
+          : 'Accounts, balances, transactions, budgets, and categories are all stored locally. Linking a real bank keeps one thing on our server -- a securely encrypted connection token so we can refresh your accounts. That token is the only thing that ever leaves this device; your actual transaction history never is.',
+    },
+    Platform.OS === 'web'
+      ? {
+          icon: 'bank',
+          color: Colors.orange,
+          title: 'Linked accounts are simulated in this demo',
+          body: 'The public web demo generates realistic sample history instead of a real bank connection. Nothing is fetched from, or sent to, an actual bank. Real bank linking is available in the mobile app.',
+        }
+      : {
+          icon: 'bank',
+          color: Colors.orange,
+          title: 'Real bank connections go through Plaid',
+          body: 'Connecting a bank uses Plaid to securely link your account. We never see or store your bank login -- only Plaid does. Your transaction history is fetched and shown here, never kept on our server.',
+        },
+    {
+      icon: 'pencil',
+      color: Colors.textAccent,
+      title: 'Manual accounts are real, and stay that way',
+      body: 'Balances or CSV imports you add by hand are genuinely yours -- edited, exported, or deleted only by you, never synced anywhere automatically.',
+    },
+    {
+      icon: 'export',
+      color: Colors.amber,
+      title: 'The only way data leaves is an export you trigger',
+      body: 'Export all data (JSON) or Export transactions (CSV) above. Until you tap one of those, nothing here goes anywhere.',
+    },
+  ];
+
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <GlassSurface style={[styles.modalCard, { maxWidth: 420 }]}>
+          <Pressable onPress={e => e.stopPropagation()}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.lg }}>
+              <Text variant="title">How your data works</Text>
+              <Pressable onPress={onClose} hitSlop={12}>
+                <Icon name="close" size={15} color={Colors.text3} />
+              </Pressable>
+            </View>
+
+            <View style={{ gap: Spacing.lg }}>
+              {points.map(p => (
+                <View key={p.title} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                  <IconBadge name={p.icon} color={p.color} size={32} />
+                  <View style={{ flex: 1, marginLeft: Spacing.md }}>
+                    <Text variant="body" weight="semibold">
+                      {p.title}
+                    </Text>
+                    <Text variant="caption" color={Colors.text3} style={{ marginTop: 2 }}>
+                      {p.body}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={{ marginTop: Spacing.xl }}>
+              <PlainButton label="Got it" primary onPress={onClose} />
+            </View>
+          </Pressable>
+        </GlassSurface>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -294,11 +370,18 @@ function AddCategoryModal({
   const [emoji, setEmoji] = useState(EMOJI_CHOICES[0]);
   const [color, setColor] = useState<string>(ChartPalette[0]);
   const isValid = name.trim().length > 0;
+  const { width } = useWindowDimensions();
+  // Same call as EditBudgetModal: full-width symmetric buttons for touch,
+  // right-aligned auto-width buttons once there's a mouse/trackpad and a
+  // card that isn't thumb-reach constrained.
+  const isWideWeb = Platform.OS === 'web' && width >= Breakpoints.wide;
+  useEscapeToClose(onClose);
 
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={e => e.stopPropagation()}>
+        <GlassSurface style={styles.modalCard}>
+        <Pressable onPress={e => e.stopPropagation()}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg }}>
             <CategoryIcon emoji={emoji} color={color} size={32} />
             <Text variant="title">New category</Text>
@@ -344,11 +427,11 @@ function AddCategoryModal({
             ))}
           </View>
 
-          <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xl }}>
-            <View style={{ flex: 1 }}>
+          <View style={[styles.modalFooterRow, isWideWeb && styles.modalFooterRowWide]}>
+            <View style={!isWideWeb && { flex: 1 }}>
               <PlainButton label="Cancel" onPress={onClose} />
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={!isWideWeb && { flex: 1 }}>
               <PlainButton
                 label="Save"
                 primary
@@ -358,6 +441,7 @@ function AddCategoryModal({
             </View>
           </View>
         </Pressable>
+        </GlassSurface>
       </Pressable>
     </Modal>
   );
@@ -398,18 +482,20 @@ function ExportRow({
   sublabel,
   loading,
   onPress,
+  last,
 }: {
   icon: IconName;
   label: string;
   sublabel: string;
   loading: boolean;
   onPress: () => void;
+  last?: boolean;
 }) {
   return (
-    <Pressable onPress={onPress} disabled={loading} style={styles.exportRow}>
+    <Pressable onPress={onPress} disabled={loading} style={[styles.exportRow, !last && styles.rowDivider]}>
       <IconBadge name={icon} color={Colors.orange} size={30} />
       <View style={{ flex: 1, marginLeft: Spacing.sm }}>
-        <Text variant="body" color={Colors.orange} weight="semibold">
+        <Text variant="body" color={Colors.text1} weight="semibold">
           {label}
         </Text>
         <Text variant="micro" color={Colors.text4} style={{ marginTop: 2 }}>
@@ -429,9 +515,14 @@ function SectionLabel({ text }: { text: string }) {
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+    <View
+      style={[
+        { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm + 2 },
+        !last && styles.rowDivider,
+      ]}
+    >
       <Text variant="body" color={Colors.text3}>
         {label}
       </Text>
@@ -442,6 +533,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.bg },
+  scroll: { flex: 1 },
   sectionLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   accountRow: {
     flexDirection: 'row',
@@ -449,21 +541,24 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  institutionDot: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
   linkButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.sm },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border1,
+  },
   exportRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border1,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  rowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border1,
   },
   dangerRow: {
     flexDirection: 'row',
@@ -486,11 +581,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.xl,
     padding: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.border2,
   },
   modalInput: {
     backgroundColor: Colors.surface2,
@@ -524,9 +615,12 @@ const styles = StyleSheet.create({
   plainButton: {
     alignItems: 'center',
     paddingVertical: Spacing.md - 2,
+    paddingHorizontal: Spacing.lg,
     borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.border2,
     backgroundColor: Colors.surface2,
   },
+  modalFooterRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xl },
+  modalFooterRowWide: { justifyContent: 'flex-end' },
 });

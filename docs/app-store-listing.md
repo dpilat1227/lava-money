@@ -78,12 +78,36 @@ Welcome to the Lava Money beta. Track net worth, budgets, and spending — with 
 
 ## App Privacy questionnaire (the "Privacy Nutrition Label")
 
-Apple's App Privacy form asks what data types the app collects. As of this
-beta (no analytics SDK, no account system, no linked-bank data leaving the
-device): answer **"Data Not Collected"** for every category. If a real bank
-connection or crash reporting/analytics is added later, this needs revisiting
-before that update ships — the answers have to match what the app actually
-does.
+**Revisit before the build with real Plaid linking ships** -- this section
+was written for the pre-Plaid beta and is no longer accurate on its own.
+See `docs/PLAID_SETUP.md` for the feature this section is about.
+
+Apple's App Privacy form asks what data types the app collects. The
+accurate answer now depends on whether the build includes real bank
+linking:
+
+- **No analytics SDK, no account system** either way -- still true, still
+  answer "Data Not Collected" for Usage Data, Identifiers, Diagnostics, etc.
+- **Financial Info**: once real Plaid linking ships, this can no longer be
+  blanket "Data Not Collected." A `public_token`/institution selection is
+  sent to our backend during linking, and every subsequent balance/
+  transaction refresh passes through it (never stored there, but it is
+  *transmitted* through infrastructure we control, which is what Apple's
+  form is actually asking about). The accurate answer is **"Data Linked to
+  You"** for Financial Info, with "Used for App Functionality" as the
+  purpose, "Not used for tracking," and "Not shared with third parties"
+  (Plaid itself is a service provider processing the request on the app's
+  behalf, not a third party the data is "shared" with in Apple's sense --
+  double check this framing against Apple's current guidance before
+  submitting, since their definitions shift).
+- **Device ID**: the locally-generated `deviceId` (see `plaidProvider.ts`)
+  is a random UUID never tied to an email/name, but it is sent to our
+  backend and used to look up linked accounts -- likely needs to be
+  disclosed as a form of Identifier ("Device ID") linked to the user's
+  financial data, even though it's not linked to their real-world identity.
+- **On the web build**: still fully "Data Not Collected" -- the web demo
+  never gained real linking (see docs/PLAID_SETUP.md's platform-scope
+  decision), so this distinction only applies to the native app submission.
 
 ## Screenshots (required before submitting for review, not for internal TestFlight)
 

@@ -45,6 +45,16 @@ type Action =
   | { type: 'HYDRATE'; payload: Omit<FinanceState, 'isHydrated'> }
   | { type: 'LINK_INSTITUTION'; institutionId: string }
   | { type: 'UNLINK_ACCOUNT'; accountId: string }
+  | { type: 'LINK_PLAID_ITEM'; institution: Institution; accounts: Account[]; transactions: Transaction[] }
+  | {
+      type: 'SYNC_PLAID_TRANSACTIONS';
+      plaidItemId: string;
+      accounts: Account[];
+      added: Transaction[];
+      modified: Transaction[];
+      removedIds: string[];
+    }
+  | { type: 'PLAID_SYNC_ERROR'; plaidItemId: string }
   | { type: 'CATEGORIZE_TRANSACTION'; transactionId: string; categoryId: string }
   | { type: 'SET_NOTE'; transactionId: string; note: string }
   | { type: 'SET_BUDGET'; categoryId: string; monthlyLimit: number }
@@ -84,9 +94,24 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       return { ...state, ...action.payload, isHydrated: true };
 
     case 'LINK_INSTITUTION': {
-      const institution = getInstitution(action.institutionId);
+      const institution = getInstitution(state.institutions, action.institutionId);
       const alreadyLinked = state.institutions.some(i => i.id === institution.id);
-      const generated = generateBankData(action.institutionId, seedCounter++);
+      // Fixed bills (rent, utilities, payroll, gym) only get generated for
+      // the *first* linked institution -- see `GenerateBankDataOptions` --
+      // and any subscription a previously linked institution already rolled
+      // is excluded so a second bank can't independently re-pick "Netflix"
+      // and produce two identical charges. Real accounts don't need this
+      // (a real bank connection reports whatever it reports); this is
+      // purely to keep the mock generator's *combination* of multiple
+      // linked institutions believable.
+      const linkedBankCount = state.institutions.filter(i => i.id !== MANUAL_INSTITUTION.id).length;
+      const existingSubscriptionNames = [
+        ...new Set(state.transactions.filter(t => t.categoryId === 'subscriptions').map(t => t.merchantName)),
+      ];
+      const generated = generateBankData(action.institutionId, seedCounter++, {
+        includeFixedBills: linkedBankCount === 0,
+        excludeSubscriptionNames: existingSubscriptionNames,
+      });
       const budgets = state.budgets.length > 0 ? state.budgets : defaultBudgets();
       return {
         ...state,
@@ -98,11 +123,70 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     }
 
     case 'UNLINK_ACCOUNT': {
-      const accounts = state.accounts.filter(a => a.id !== action.accountId);
-      const transactions = state.transactions.filter(t => t.accountId !== action.accountId);
+      // A real Plaid Item is the unit of revocation -- one bank login can
+      // yield several accounts (checking + savings from the same
+      // password), and removing the Item on Plaid's side (done by the
+      // caller before this dispatches, see account/[id].tsx) revokes all
+      // of them together. Cascading here too keeps local state matching
+      // what's actually still connected -- a lone sibling account with no
+      // way to ever refresh again would be a worse outcome than removing
+      // it alongside the one the user actually tapped.
+      const target = state.accounts.find(a => a.id === action.accountId);
+      const removedIds = new Set(
+        target?.plaidItemId ? state.accounts.filter(a => a.plaidItemId === target.plaidItemId).map(a => a.id) : [action.accountId]
+      );
+      const accounts = state.accounts.filter(a => !removedIds.has(a.id));
+      const transactions = state.transactions.filter(t => !removedIds.has(t.accountId));
       const remainingInstitutionIds = new Set(accounts.map(a => a.institutionId));
       const institutions = state.institutions.filter(i => remainingInstitutionIds.has(i.id));
       return { ...state, accounts, transactions, institutions };
+    }
+
+    case 'LINK_PLAID_ITEM': {
+      const alreadyLinked = state.institutions.some(i => i.id === action.institution.id);
+      const budgets = state.budgets.length > 0 ? state.budgets : defaultBudgets();
+      return {
+        ...state,
+        institutions: alreadyLinked ? state.institutions : [...state.institutions, action.institution],
+        accounts: [...state.accounts, ...action.accounts],
+        transactions: [...action.transactions, ...state.transactions],
+        budgets,
+      };
+    }
+
+    case 'SYNC_PLAID_TRANSACTIONS': {
+      const removedIds = new Set(action.removedIds);
+      const modifiedById = new Map(action.modified.map(t => [t.id, t]));
+      const accountUpdateById = new Map(action.accounts.map(a => [a.id, a]));
+      const existingAccountIds = new Set(state.accounts.map(a => a.id));
+      // Not just an update -- an Item's very first sync can come back
+      // with zero accounts if Plaid hadn't finished producing them yet
+      // (see exchange-token's retry comment). A later refresh is what
+      // actually surfaces those accounts for the first time, so any
+      // account id not already in state needs to be *added*, not silently
+      // dropped because `.map` only ever touches accounts already there.
+      const newAccounts = action.accounts.filter(a => !existingAccountIds.has(a.id));
+      return {
+        ...state,
+        transactions: [
+          ...action.added,
+          ...state.transactions.filter(t => !removedIds.has(t.id)).map(t => modifiedById.get(t.id) ?? t),
+        ],
+        accounts: [
+          ...state.accounts.map(a => {
+            const updated = accountUpdateById.get(a.id);
+            return updated ? { ...a, balance: updated.balance, creditLimit: updated.creditLimit, syncStatus: 'synced' as const, lastSyncedAt: updated.lastSyncedAt } : a;
+          }),
+          ...newAccounts,
+        ],
+      };
+    }
+
+    case 'PLAID_SYNC_ERROR': {
+      return {
+        ...state,
+        accounts: state.accounts.map(a => (a.plaidItemId === action.plaidItemId ? { ...a, syncStatus: 'error' } : a)),
+      };
     }
 
     case 'CATEGORIZE_TRANSACTION':
@@ -149,10 +233,18 @@ function reducer(state: FinanceState, action: Action): FinanceState {
         lastSyncedAt: new Date().toISOString(),
       };
       const hadManualInstitution = state.institutions.some(i => i.id === MANUAL_INSTITUTION.id);
+      // LINK_INSTITUTION above has always seeded starter budgets for anyone
+      // who links a bank; manual-only accounts never got the same
+      // treatment, so someone who only adds a manual account (the actual
+      // real-device screenshot that surfaced this) opens Budgets to a bare
+      // wall of "add a budget" rows and nothing else -- same fix, same
+      // condition (never overwrite budgets someone already set).
+      const budgets = state.budgets.length > 0 ? state.budgets : defaultBudgets();
       return {
         ...state,
         institutions: hadManualInstitution ? state.institutions : [...state.institutions, MANUAL_INSTITUTION],
         accounts: [...state.accounts, account],
+        budgets,
       };
     }
 
@@ -275,6 +367,16 @@ interface FinanceContextValue extends FinanceState {
   institutionOptions: Institution[];
   linkInstitution: (institutionId: string) => void;
   unlinkAccount: (accountId: string) => void;
+  /** Merges the result of a completed real Plaid Link session (see
+   * `lib/hooks/usePlaidLink.ts`) into state. Purely local/synchronous --
+   * every network call (create-link-token, exchange-token) already
+   * happened by the time this is called, matching the rest of this
+   * reducer's "no async in the reducer itself" rule. */
+  linkPlaidAccounts: (input: { institution: Institution; accounts: Account[]; transactions: Transaction[] }) => void;
+  /** Merges a completed `/api/plaid/sync-transactions` result. Same rule --
+   * the network call already happened; this only updates state. */
+  applyPlaidSync: (input: { plaidItemId: string; accounts: Account[]; added: Transaction[]; modified: Transaction[]; removedIds: string[] }) => void;
+  markPlaidItemError: (plaidItemId: string) => void;
   categorizeTransaction: (transactionId: string, categoryId: string) => void;
   setNote: (transactionId: string, note: string) => void;
   setBudget: (categoryId: string, monthlyLimit: number) => void;
@@ -354,6 +456,10 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       institutionOptions: MOCK_INSTITUTIONS,
       linkInstitution: institutionId => dispatch({ type: 'LINK_INSTITUTION', institutionId }),
       unlinkAccount: accountId => dispatch({ type: 'UNLINK_ACCOUNT', accountId }),
+      linkPlaidAccounts: ({ institution, accounts, transactions }) => dispatch({ type: 'LINK_PLAID_ITEM', institution, accounts, transactions }),
+      applyPlaidSync: ({ plaidItemId, accounts, added, modified, removedIds }) =>
+        dispatch({ type: 'SYNC_PLAID_TRANSACTIONS', plaidItemId, accounts, added, modified, removedIds }),
+      markPlaidItemError: plaidItemId => dispatch({ type: 'PLAID_SYNC_ERROR', plaidItemId }),
       categorizeTransaction: (transactionId, categoryId) => dispatch({ type: 'CATEGORIZE_TRANSACTION', transactionId, categoryId }),
       setNote: (transactionId, note) => dispatch({ type: 'SET_NOTE', transactionId, note }),
       setBudget: (categoryId, monthlyLimit) => dispatch({ type: 'SET_BUDGET', categoryId, monthlyLimit }),

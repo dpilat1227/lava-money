@@ -29,7 +29,16 @@ export const MANUAL_INSTITUTION: Institution = {
   color: Colors.text3,
 };
 
-export function getInstitution(id: string): Institution {
+/**
+ * `institutions` is `useFinance()`'s merged list (fixed mock list + any
+ * real Plaid institutions linked this session -- see `LINK_PLAID_ITEM` in
+ * FinanceContext.tsx) -- same "pass the caller's merged list in" pattern
+ * `findCategory(categories, id)` already uses for custom categories, and
+ * for the same reason: a static lookup against only the fixed mock list
+ * would silently resolve every real bank to whichever mock institution
+ * happens to be first, which is worse than an honest "not found" fallback.
+ */
+export function getInstitution(institutions: Institution[], id: string): Institution {
   if (id === MANUAL_INSTITUTION.id) return MANUAL_INSTITUTION;
-  return MOCK_INSTITUTIONS.find(i => i.id === id) ?? MOCK_INSTITUTIONS[0];
+  return institutions.find(i => i.id === id) ?? MOCK_INSTITUTIONS.find(i => i.id === id) ?? MOCK_INSTITUTIONS[0];
 }

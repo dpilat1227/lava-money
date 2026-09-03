@@ -2,8 +2,8 @@ import * as Haptics from 'expo-haptics';
 import React, { useEffect, useState } from 'react';
 import { Animated, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { Text } from '@/components/ui';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Card, Icon, InstitutionAvatar, Text } from '@/components/ui';
+import { Colors, Spacing } from '@/constants/theme';
 import { useFinance } from '@/lib/store/FinanceContext';
 import type { Institution } from '@/lib/types';
 
@@ -73,15 +73,13 @@ function ChooseInstitutionStep({
         keyExtractor={i => i.id}
         contentContainerStyle={{ paddingHorizontal: Spacing.lg, gap: Spacing.sm }}
         renderItem={({ item }) => (
-          <Pressable onPress={() => onSelect(item)} style={({ pressed }) => [styles.institutionRow, { opacity: pressed ? 0.7 : 1 }]}>
-            <View style={[styles.institutionDot, { backgroundColor: item.color }]} />
-            <Text variant="subtitle" style={{ flex: 1 }}>
+          <Card onPress={() => onSelect(item)} style={styles.institutionRow}>
+            <InstitutionAvatar name={item.name} color={item.color} />
+            <Text variant="subtitle" style={{ flex: 1, marginLeft: Spacing.md }}>
               {item.name}
             </Text>
-            <Text variant="body" color={Colors.text4}>
-              ›
-            </Text>
-          </Pressable>
+            <Icon name="chevronRight" size={14} color={Colors.text4} />
+          </Card>
         )}
       />
     </View>
@@ -131,15 +129,12 @@ function LinkingStep({ institution, onDone }: { institution: Institution; onDone
       </Text>
       <View style={{ marginTop: Spacing.lg, gap: Spacing.sm }}>
         {LINK_STAGES.map((stage, i) => (
-          <Text
-            key={stage}
-            variant="body"
-            color={i < stageIndex ? Colors.green : i === stageIndex ? Colors.text1 : Colors.text4}
-            style={{ textAlign: 'center' }}
-          >
-            {i < stageIndex ? '✓ ' : ''}
-            {stage}
-          </Text>
+          <View key={stage} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            {i < stageIndex && <Icon name="check" size={12} color={Colors.green} />}
+            <Text variant="body" color={i < stageIndex ? Colors.green : i === stageIndex ? Colors.text1 : Colors.text4}>
+              {stage}
+            </Text>
+          </View>
         ))}
       </View>
     </View>
@@ -156,7 +151,7 @@ function SuccessStep({ institution, onContinue }: { institution: Institution; on
   return (
     <View style={styles.centeredFlex}>
       <View style={styles.checkCircle}>
-        <Text style={{ fontSize: 32 }}>✓</Text>
+        <Icon name="check" size={30} color={Colors.green} />
       </View>
       <Text variant="title" style={{ marginTop: Spacing.lg }}>
         {institution.name} linked
@@ -173,15 +168,7 @@ const styles = StyleSheet.create({
   institutionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
-    paddingVertical: Spacing.md + 2,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.surfaceCard,
-    borderWidth: 1,
-    borderColor: Colors.border1,
   },
-  institutionDot: { width: 12, height: 12, borderRadius: 6 },
   checkCircle: {
     width: 72,
     height: 72,

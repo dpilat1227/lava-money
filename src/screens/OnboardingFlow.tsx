@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Alert, Animated, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { Button, CategoryIcon, FlameMark, Text } from '@/components/ui';
 import { Colors, Radius, Shadow, Spacing } from '@/constants/theme';
+import { usePlaidLink } from '@/lib/hooks/usePlaidLink';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { AddAccountChooser } from '@/screens/AddAccountChooser';
 import { LinkAccountFlow } from '@/screens/LinkAccountFlow';
@@ -15,6 +16,17 @@ type Step = 'welcome' | 'choose' | 'link' | 'manual';
 export function OnboardingFlow() {
   const { linkInstitution, addManualAccount } = useFinance();
   const [step, setStep] = useState<Step>('welcome');
+  const { linkBank, linking } = usePlaidLink();
+
+  const handleConnectRealBank = async () => {
+    const outcome = await linkBank();
+    // On success, `accounts` goes non-empty and `RootLayout` swaps this
+    // whole component out for the real tab stack automatically -- no
+    // navigation call needed here, same as `linkInstitution()`'s flow.
+    if (!outcome.ok && !outcome.cancelled) {
+      Alert.alert('Could not link that account', outcome.error ?? 'Please try again.');
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }} edges={['top', 'bottom']}>
@@ -22,8 +34,10 @@ export function OnboardingFlow() {
       {step === 'choose' && (
         <AddAccountChooser
           onChooseLink={() => setStep('link')}
+          onChooseRealBank={Platform.OS !== 'web' ? handleConnectRealBank : undefined}
           onChooseManual={() => setStep('manual')}
           onCancel={() => setStep('welcome')}
+          linkingRealBank={linking}
         />
       )}
       {step === 'link' && <LinkAccountFlow onCancel={() => setStep('choose')} onComplete={linkInstitution} />}
@@ -98,13 +112,26 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
         </View>
 
         <Text variant="body" color={Colors.text3} style={{ marginTop: Spacing.md, textAlign: 'center', maxWidth: 300 }}>
-          All your money, one clear picture — bank-linked or not. Your data stays on this device either way.
+          {/* "Your data stays on this device either way" is only fully true on
+              the web demo -- one screen from here, "Connect a bank" sends an
+              encrypted token to our server via Plaid (see Settings' Data &
+              privacy explainer). Narrowed to "transaction history" for
+              native, since that specific claim -- unlike "your data" broadly
+              -- stays true for both linking paths. A promise on the very
+              first screen that the next screen immediately contradicts would
+              undercut trust worse than a more modest claim would. */}
+          All your money, one clear picture — bank-linked or not. Your{' '}
+          {Platform.OS === 'web' ? 'data' : 'transaction history'} stays on this device either way.
         </Text>
 
         <View style={{ marginTop: Spacing.xxl, gap: Spacing.lg, width: '100%' }}>
           <FeatureRow emoji="💰" color={Colors.orange} text="Net worth, budgets, and spending trends in one place" />
           <FeatureRow emoji="✍️" color={Colors.amber} text="Connect a bank, or add accounts by hand — your choice" />
-          <FeatureRow emoji="🔒" color={Colors.textAccent} text="Nothing leaves this device unless you export it yourself" />
+          <FeatureRow
+            emoji="🔒"
+            color={Colors.textAccent}
+            text={Platform.OS === 'web' ? 'Nothing leaves this device unless you export it yourself' : 'Your transaction history never leaves this device'}
+          />
         </View>
       </View>
 

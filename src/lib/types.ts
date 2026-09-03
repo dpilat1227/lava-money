@@ -76,6 +76,13 @@ export interface Account {
    * different meaning, so every account row can show one "as of" line
    * without a branch at every call site. */
   lastSyncedAt: string;
+  /** Set only for accounts that came through a *real* Plaid connection
+   * (see lib/providers/plaidProvider.ts) -- undefined for mock-linked and
+   * manual accounts. Plaid Items, not individual accounts, are the unit of
+   * refresh/revocation: one bank login can yield several accounts sharing
+   * one `plaidItemId`, so refreshing/unlinking operates on every account
+   * with the same id together, not one at a time. */
+  plaidItemId?: string;
 }
 
 export function isAssetAccount(type: AccountType): boolean {
