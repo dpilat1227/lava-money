@@ -1,18 +1,18 @@
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
+import { SpendCeilingChart } from '@/components/charts/SpendCeilingChart';
 import { NetWorthHero } from '@/components/home/NetWorthHero';
 import { CategoryRankedList } from '@/components/insights/CategoryRankedList';
 import { Amount, Badge, Card, CategoryIcon, Icon, Text } from '@/components/ui';
 import { Breakpoints, Colors, Spacing } from '@/constants/theme';
-import { useMonthlyIncomeVsExpense, useNetWorthHistory, useNetWorthSummary, useSpendByPeriod, useUpcomingRecurring } from '@/hooks/useFinanceSelectors';
+import { useNetWorthHistory, useNetWorthSummary, useSpendByPeriod, useUpcomingRecurring } from '@/hooks/useFinanceSelectors';
 import { findCategory } from '@/lib/mock/categories';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { findCategorySuggestions } from '@/lib/utils/categorizer';
 import { formatCurrency } from '@/lib/utils/currency';
-import { formatDayLabel, formatMonthLabel } from '@/lib/utils/date';
-import { Sparkline } from './Sparkline';
+import { formatDayLabel } from '@/lib/utils/date';
 
 const RANGE_OPTIONS = [
   { label: '1M', months: 1 },
@@ -31,6 +31,7 @@ const RANGE_OPTIONS = [
  * other for attention; see the redesign plan for why that read as generic.
  */
 export function DesktopDashboard() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const { accounts, transactions, categories } = useFinance();
   const [range, setRange] = useState<1 | 3 | 6 | 12>(6);
@@ -49,26 +50,29 @@ export function DesktopDashboard() {
   // matter got squeezed to a third of the row each.
   const hasReview = suggestions.length > 0;
 
-  // Drop the current, still-in-progress month -- someone opening this demo
-  // on the 2nd of the month would otherwise see "$12 spent" next to "$7,989
-  // spent last month," which reads as broken rather than as "it's early in
-  // the month." A trailing window of complete months is the one framing
-  // that never looks wrong regardless of what day this loads on.
-  const flow = useMonthlyIncomeVsExpense(7).slice(0, -1);
-  const thisMonth = flow[flow.length - 1];
-  const lastMonth = flow[flow.length - 2];
-  const spendValues = flow.map(f => f.expense);
+  // Design-audit-round-3: was a `Sparkline` (deliberately axis-less by its
+  // own doc comment -- "a shape, not a chart to be read precisely") plus
+  // one plain number. "Shouldn't monthly spending be a bar chart, with
+  // dates?" -- fair; this card is one of two main content pieces on the
+  // dashboard, not a decorative footnote, and mobile's own SpendingCard
+  // already gets the full SpendCeilingChart treatment. `completeOnly` for
+  // the same "don't show a misleadingly tiny in-progress month" reason the
+  // old flow.slice(0, -1) existed for.
+  const monthlySpend = useSpendByPeriod('month', 6, { completeOnly: true });
+  const thisMonth = monthlySpend[monthlySpend.length - 1];
+  const lastMonth = monthlySpend[monthlySpend.length - 2];
+  const monthlySpendWithData = monthlySpend.filter(p => p.total > 0);
+  const monthlyAverage = monthlySpendWithData.length > 0 ? monthlySpendWithData.reduce((s, p) => s + p.total, 0) / monthlySpendWithData.length : 0;
 
   // "Top categories" is a teaser, not the chart -- the full stacked-bar
   // breakdown with a legend lives on Trends now (see CategoryStackedBarChart
-  // / DesktopTrends). `completeOnly` so this always agrees with "Monthly
-  // spending" right next to it about what month it's talking about -- the
-  // two used to run independent "is the current month good enough" checks
-  // (one always used the current month regardless, the other only fell
-  // back once it was literally $0), which could and did disagree with each
-  // other on the first few days of a month.
-  const topCategoriesPeriod = useSpendByPeriod('month', 1, { completeOnly: true })[0];
-  const topCategories = topCategoriesPeriod?.byCategory.slice(0, 3) ?? [];
+  // / DesktopTrends). Reuses `thisMonth` (monthlySpend's own last entry)
+  // rather than a second `useSpendByPeriod('month', 1, ...)` call -- this
+  // and "Monthly spending" used to run two independent queries that could
+  // (and did) disagree about what month "the current one" meant on the
+  // first few days of a new month; sharing the exact same object makes
+  // that class of bug impossible instead of just unlikely.
+  const topCategories = thisMonth?.byCategory.slice(0, 3) ?? [];
 
   // Above Breakpoints.xwide (defined in theme.ts, previously unused) a
   // fixed 1040px column leaves distracting dead space on either side on a
@@ -93,16 +97,21 @@ export function DesktopDashboard() {
       <View style={[styles.row, { marginTop: Spacing.section }]}>
         <Card level="flat" style={hasReview ? styles.thirdCard : styles.halfCard}>
           <Text variant="subtitle" color={Colors.text2}>
-            Monthly spending{thisMonth ? ` (${formatMonthLabel(`${thisMonth.month}-01`)})` : ''}
+            Monthly spending{thisMonth ? ` (${thisMonth.label})` : ''}
           </Text>
-          <Text variant="display" style={{ marginTop: Spacing.sm, fontSize: 28 }}>
-            {formatCurrency(thisMonth?.expense ?? 0)}
+          {/* Design-audit-round-3 fix: this was `variant="display"` with no
+              explicit weight, which defaults to Inter_900Black -- visibly
+              heavier than NetWorthHero's own hero number right above it
+              (`weight="bold"` -> Inter_700Bold), despite both being "the
+              big number" in their own card. Same weight now. */}
+          <Text variant="display" weight="bold" style={{ marginTop: Spacing.sm, fontSize: 28 }}>
+            {formatCurrency(thisMonth?.total ?? 0)}
           </Text>
           <Text variant="caption" color={Colors.text4}>
-            {lastMonth ? `${formatCurrency(lastMonth.expense)} in ${formatMonthLabel(`${lastMonth.month}-01`)}` : 'spent this month'}
+            {lastMonth ? `${formatCurrency(lastMonth.total)} in ${lastMonth.label}` : 'spent this month'}
           </Text>
           <View style={{ marginTop: Spacing.md }}>
-            <Sparkline values={spendValues} color={Colors.orange} />
+            <SpendCeilingChart periods={monthlySpend} granularity="month" monthlyCeiling={monthlyAverage} ceilingIsPrescaled ceilingLabel="Avg." height={90} />
           </View>
         </Card>
 
@@ -147,8 +156,9 @@ export function DesktopDashboard() {
             <CategoryRankedList
               items={topCategories}
               categories={categories}
-              periodTotal={topCategoriesPeriod?.total ?? 0}
+              periodTotal={thisMonth?.total ?? 0}
               emptyLabel="No spending yet this month."
+              onSelectCategory={categoryId => router.push(`/category/${categoryId}`)}
             />
           </View>
         </Card>
