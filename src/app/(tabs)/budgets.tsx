@@ -58,7 +58,15 @@ export default function BudgetsScreen() {
         <ScreenHeader title="Budgets" subtitle="This month" />
 
         <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.lg }}>
-          {progress.length === 0 ? <SmartSetupCard onSmartSetup={handleSmartSetup} /> : <BudgetHero progress={progress} />}
+          {/* Design-audit-round-3: these used to be either/or -- no category
+              budgets meant no BudgetHero at all, which meant no way to
+              reach the new savings/debt-payoff goal either, even though a
+              goal is deliberately independent of whether any category has
+              a limit set. Both render now; BudgetHero already has its own
+              "no budgets yet" framing (`totalLimit === 0` -> "Spent this
+              month," ring hidden) for exactly this case. */}
+          {progress.length === 0 && <SmartSetupCard onSmartSetup={handleSmartSetup} />}
+          <BudgetHero progress={progress} />
 
           <BudgetList progress={progress} categories={categories} recentlyAddedIds={recentlyAddedIds} />
 

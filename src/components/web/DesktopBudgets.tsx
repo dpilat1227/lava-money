@@ -47,32 +47,35 @@ export function DesktopBudgets({
         This month
       </Text>
 
-      {progress.length === 0 ? (
-        <View style={{ marginTop: Spacing.xl, maxWidth: 480 }}>
-          <SmartSetupCard onSmartSetup={onSmartSetup} />
-        </View>
-      ) : (
-        <View style={styles.row}>
-          <View style={styles.mainCol}>
-            <BudgetHero progress={progress} />
-            <View style={{ marginTop: Spacing.lg }}>
-              <BudgetList progress={progress} categories={categories} />
+      {/* Design-audit-round-3: these used to be either/or (SmartSetupCard
+          alone, centered, when there were no category budgets yet; the
+          full two-column layout only once there were) -- which meant no
+          way to reach the new savings/debt-payoff goal at all until
+          someone had already set up a category budget, even though a
+          goal is deliberately independent of that. The two-column layout
+          always renders now; SmartSetupCard becomes an *additional*
+          prompt at the top of the main column rather than a replacement
+          for it. BudgetList/BudgetBreakdownCard already return null on
+          their own when there's nothing to show them for. */}
+      <View style={styles.row}>
+        <View style={styles.mainCol}>
+          {progress.length === 0 && (
+            <View style={{ marginBottom: Spacing.lg }}>
+              <SmartSetupCard onSmartSetup={onSmartSetup} />
             </View>
-          </View>
-          <View style={styles.sideCol}>
-            <AddBudgetChips categories={unbudgeted} onSelect={onEdit} />
-            <View style={{ marginTop: Spacing.xl }}>
-              <BudgetBreakdownCard />
-            </View>
+          )}
+          <BudgetHero progress={progress} />
+          <View style={{ marginTop: Spacing.lg }}>
+            <BudgetList progress={progress} categories={categories} />
           </View>
         </View>
-      )}
-
-      {progress.length === 0 && unbudgeted.length > 0 && (
-        <View style={{ marginTop: Spacing.xl }}>
+        <View style={styles.sideCol}>
           <AddBudgetChips categories={unbudgeted} onSelect={onEdit} />
+          <View style={{ marginTop: Spacing.xl }}>
+            <BudgetBreakdownCard />
+          </View>
         </View>
-      )}
+      </View>
 
       {editing && (
         <EditBudgetModal

@@ -198,6 +198,37 @@ export interface Budget {
   monthlyLimit: number;
 }
 
+export type SavingsGoalType = 'save' | 'debt_payoff';
+
+/**
+ * Design-audit-round-3: "Left to spend" treated every dollar not yet
+ * assigned to a category limit as fully disposable, which doesn't match
+ * why most people actually open a budgeting app -- they're trying to save,
+ * not find out how much more they're technically allowed to spend before
+ * cash flow goes negative (see docs -- Monarch's default "Flex Budgeting"
+ * subtracts a savings/goal commitment *before* it shows you a spendable
+ * number; YNAB goes further and treats savings/debt as literal budget
+ * categories with no "leftover" concept at all).
+ *
+ * Deliberately the smallest version of that idea that's still real: one
+ * number, one type, not a multi-goal system, not a YNAB-style re-architecture
+ * of how income gets allocated. `debt_payoff` exists as an equal option to
+ * `save` (not a `save`-only field) because a user actively paying down debt
+ * is not well served by a metric that only ever talks about savings --
+ * see lib/utils/savingsGoal.ts for how progress is measured differently
+ * per type (net income-minus-spending for `save`, the tracked liability
+ * account's balance delta for `debt_payoff`).
+ */
+export interface SavingsGoal {
+  type: SavingsGoalType;
+  monthlyTarget: number;
+  /** `debt_payoff` only -- which liability account's balance drop counts
+   * toward the target. Required for that type since "pay down debt" is
+   * meaningless without knowing *which* balance; unset for `save`, where
+   * progress is measured from income/spending instead of any one account. */
+  debtAccountId?: string;
+}
+
 export interface NetWorthPoint {
   date: string; // ISO, first of month
   assets: number;

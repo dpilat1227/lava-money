@@ -154,7 +154,13 @@ export default function CategoryDetailScreen() {
                 <Text variant="caption" color={Colors.text4} style={{ marginRight: Spacing.sm }}>
                   {s.cadence.charAt(0).toUpperCase() + s.cadence.slice(1)}
                 </Text>
-                <Amount amount={-s.averageAmount} variant="body" />
+                {/* averageAmount is signed the same way Transaction.amount is
+                    (negative = spend) -- this screen only ever lists expense
+                    categories, so it's already negative here. The earlier
+                    `-s.averageAmount` double-flipped it to positive, which
+                    rendered a rent/subscription charge in Amount's "income"
+                    green -- backwards. */}
+                <Amount amount={s.averageAmount} variant="body" />
               </View>
             ))}
           </View>

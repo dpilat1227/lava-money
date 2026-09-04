@@ -20,7 +20,10 @@ export interface RecurringInsightItem {
   daysUntilExpected: number; // negative if overdue
 }
 
-const CADENCE_TO_MONTHLY: Record<RecurringCadence, number> = {
+/** Exported for lib/utils/savingsGoal.ts's projection math -- same "one
+ * cadence-to-monthly conversion, used everywhere a monthly-equivalent
+ * matters" rule as everything else shared across these util files. */
+export const CADENCE_TO_MONTHLY: Record<RecurringCadence, number> = {
   weekly: 4.345, // average weeks per month
   biweekly: 2.1725,
   monthly: 1,

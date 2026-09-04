@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import { useFinance } from '@/lib/store/FinanceContext';
-import type { NetWorthPoint, Transaction } from '@/lib/types';
+import type { NetWorthPoint, SavingsGoal, Transaction } from '@/lib/types';
 import {
   addMonths,
   addWeeks,
@@ -17,6 +17,7 @@ import {
 } from '@/lib/utils/date';
 import { buildRecurringInsights, type RecurringInsights } from '@/lib/utils/insights';
 import { buildNetWorthHistory, netWorthOf } from '@/lib/utils/netWorth';
+import { actualNetForMonth, debtPaidDownForMonth, projectMonthlyIncomeAndExpense } from '@/lib/utils/savingsGoal';
 
 export function useNetWorthHistory(monthsBack = 6, granularity: 'month' | 'week' = 'month'): NetWorthPoint[] {
   const { accounts, transactions } = useFinance();
@@ -80,6 +81,51 @@ export function useBudgetProgress(): BudgetProgress[] {
       }),
     [budgets, spendByCategory]
   );
+}
+
+export interface SavingsGoalProgress {
+  goal: SavingsGoal | null;
+  /** Actual, not projected. For `save`: income minus spend so far this
+   * month. For `debt_payoff`: how much the tracked account's balance has
+   * already dropped this month. Always real numbers, never a guess. */
+  actualSoFar: number;
+  /** Recurring-bill-aware projection to month-end for `save` (see
+   * projectMonthlyIncomeAndExpense's doc). Equal to `actualSoFar` for
+   * `debt_payoff` -- see debtPaidDownForMonth's doc for why that one isn't
+   * projected at all. */
+  projected: number;
+  /** Same actual figure, for the last complete month -- powers a "vs last
+   * month" comparison line. */
+  lastMonthActual: number;
+}
+
+const NO_GOAL_PROGRESS: SavingsGoalProgress = { goal: null, actualSoFar: 0, projected: 0, lastMonthActual: 0 };
+
+/** Design-audit-round-3: the data behind Budgets' "on track to save/pay
+ * down $X" hero. One hook, one shape, regardless of which goal type (or
+ * no goal at all) is active, so BudgetHero doesn't need type-narrowing at
+ * the call site. */
+export function useSavingsGoalProgress(): SavingsGoalProgress {
+  const { savingsGoal, transactions, recurringSeries, accounts } = useFinance();
+  return useMemo(() => {
+    if (!savingsGoal) return NO_GOAL_PROGRESS;
+
+    if (savingsGoal.type === 'debt_payoff') {
+      const account = accounts.find(a => a.id === savingsGoal.debtAccountId);
+      if (!account) return { ...NO_GOAL_PROGRESS, goal: savingsGoal };
+      const actualSoFar = debtPaidDownForMonth(account, transactions, 0);
+      const lastMonthActual = debtPaidDownForMonth(account, transactions, 1);
+      return { goal: savingsGoal, actualSoFar, projected: actualSoFar, lastMonthActual };
+    }
+
+    const { projectedIncome, projectedExpense } = projectMonthlyIncomeAndExpense(transactions, recurringSeries);
+    return {
+      goal: savingsGoal,
+      actualSoFar: actualNetForMonth(transactions, 0),
+      projected: projectedIncome - projectedExpense,
+      lastMonthActual: actualNetForMonth(transactions, 1),
+    };
+  }, [savingsGoal, transactions, recurringSeries, accounts]);
 }
 
 export function useUpcomingRecurring(limit = 6) {

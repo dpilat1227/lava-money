@@ -15,6 +15,7 @@ import type {
   ManualAccountInput,
   ManualTransactionInput,
   RecurringSeries,
+  SavingsGoal,
   Transaction,
 } from '@/lib/types';
 import type { ParsedTransactionRow } from '@/lib/utils/csv';
@@ -29,6 +30,8 @@ interface FinanceState {
   /** See lib/utils/impause.ts / PersistedState -- transaction ids that have
    * already shown their one-time "spend pause" reflection card. */
   acknowledgedPauseIds: string[];
+  /** `null` -- not set yet. See lib/types.ts's SavingsGoal doc. */
+  savingsGoal: SavingsGoal | null;
 }
 
 const initialState: FinanceState = {
@@ -39,6 +42,7 @@ const initialState: FinanceState = {
   budgets: [],
   customCategories: [],
   acknowledgedPauseIds: [],
+  savingsGoal: null,
 };
 
 type Action =
@@ -58,6 +62,7 @@ type Action =
   | { type: 'CATEGORIZE_TRANSACTION'; transactionId: string; categoryId: string }
   | { type: 'SET_NOTE'; transactionId: string; note: string }
   | { type: 'SET_BUDGET'; categoryId: string; monthlyLimit: number }
+  | { type: 'SET_SAVINGS_GOAL'; goal: SavingsGoal | null }
   | { type: 'RESET_ALL' }
   | { type: 'ADD_MANUAL_ACCOUNT'; accountId: string; input: ManualAccountInput }
   | { type: 'UPDATE_ACCOUNT_BALANCE'; accountId: string; balance: number }
@@ -214,6 +219,9 @@ function reducer(state: FinanceState, action: Action): FinanceState {
         : [...state.budgets, { categoryId: action.categoryId, monthlyLimit: action.monthlyLimit }];
       return { ...state, budgets };
     }
+
+    case 'SET_SAVINGS_GOAL':
+      return { ...state, savingsGoal: action.goal };
 
     case 'RESET_ALL':
       return { ...initialState, isHydrated: true };
@@ -380,6 +388,8 @@ interface FinanceContextValue extends FinanceState {
   categorizeTransaction: (transactionId: string, categoryId: string) => void;
   setNote: (transactionId: string, note: string) => void;
   setBudget: (categoryId: string, monthlyLimit: number) => void;
+  /** `null` clears the goal entirely (distinct from a $0 target). */
+  setSavingsGoal: (goal: SavingsGoal | null) => void;
   resetAll: () => void;
   /** Returns the new account's id so the caller can navigate straight to it. */
   addManualAccount: (input: ManualAccountInput) => string;
@@ -417,6 +427,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
           budgets: [],
           customCategories: [],
           acknowledgedPauseIds: [],
+          savingsGoal: null,
         },
       });
     });
@@ -431,6 +442,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       budgets: state.budgets,
       customCategories: state.customCategories,
       acknowledgedPauseIds: state.acknowledgedPauseIds,
+      savingsGoal: state.savingsGoal,
     });
   }, [
     state.isHydrated,
@@ -440,6 +452,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     state.budgets,
     state.customCategories,
     state.acknowledgedPauseIds,
+    state.savingsGoal,
   ]);
 
   const recurringSeries = useMemo(
@@ -463,6 +476,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       categorizeTransaction: (transactionId, categoryId) => dispatch({ type: 'CATEGORIZE_TRANSACTION', transactionId, categoryId }),
       setNote: (transactionId, note) => dispatch({ type: 'SET_NOTE', transactionId, note }),
       setBudget: (categoryId, monthlyLimit) => dispatch({ type: 'SET_BUDGET', categoryId, monthlyLimit }),
+      setSavingsGoal: goal => dispatch({ type: 'SET_SAVINGS_GOAL', goal }),
       resetAll: () => {
         clearPersistedState();
         dispatch({ type: 'RESET_ALL' });

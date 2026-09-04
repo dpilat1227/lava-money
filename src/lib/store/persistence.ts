@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Account, Budget, Category, Institution, Transaction } from '@/lib/types';
+import type { Account, Budget, Category, Institution, SavingsGoal, Transaction } from '@/lib/types';
 
 // Bumped from 'lava_finance.v1' at the Lava Money rename -- deliberately not
 // a migration (pre-launch demo data, nothing worth carrying forward), so
@@ -19,6 +19,9 @@ export interface PersistedState {
    * lib/utils/impause.ts) -- persisted so acknowledging one doesn't come
    * back on next app open. Defaults to `[]` for pre-Impause blobs. */
   acknowledgedPauseIds: string[];
+  /** `null` means "not set yet" -- defaults to `null` via `??` below for
+   * anyone upgrading from a persisted blob written before this existed. */
+  savingsGoal: SavingsGoal | null;
 }
 
 export async function loadPersistedState(): Promise<PersistedState | null> {
@@ -32,6 +35,7 @@ export async function loadPersistedState(): Promise<PersistedState | null> {
       ...parsed,
       customCategories: parsed.customCategories ?? [],
       acknowledgedPauseIds: parsed.acknowledgedPauseIds ?? [],
+      savingsGoal: parsed.savingsGoal ?? null,
     };
   } catch {
     return null;
