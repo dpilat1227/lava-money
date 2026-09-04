@@ -25,6 +25,18 @@ function monthLabel(month: string, style: 'long' | 'short' = 'long'): string {
  * a trend answers "is saving actually a pattern here." Renamed "Cash
  * flow" to match what it now shows; "Income vs. spending" described two
  * numbers, not a multi-month trend.
+ *
+ * Design-audit-round-4: that redesign was still eight separate text
+ * elements before the chart even started ("so many rows of text... my
+ * brain doesn't even process that," direct quote) -- title, period,
+ * Income label, Income value, Spending label, Spending value, the saved
+ * sentence, and an eyebrow. Ember tenet 1 (docs/EMBER_DESIGN_SYSTEM.md,
+ * "show the real number, organized"): the fix is re-ranking, not
+ * deleting. One hero number now carries the answer to "did this month go
+ * well" at the same scale every other hero number in this app uses;
+ * Income/Spending demote to a single supporting line instead of two
+ * equal-weight stat tiles; the chart's eyebrow is gone since the hero
+ * number and card title already establish what it's plotting.
  */
 export function CashFlowCard() {
   // +1 so the trailing entry is the current, still-in-progress month --
@@ -55,37 +67,33 @@ export function CashFlowCard() {
         </Text>
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: Spacing.lg }}>
-        <View style={{ flex: 1 }}>
-          <Text variant="micro" color={Colors.text4}>
-            Income
-          </Text>
-          <Text variant="title" weight="semibold" color={Colors.green} style={{ marginTop: 2 }}>
-            {formatCurrency(last.income, { compact: true })}
-          </Text>
-        </View>
-        <View style={{ width: 1, height: 28, backgroundColor: Colors.border1, marginHorizontal: Spacing.lg }} />
-        <View style={{ flex: 1 }}>
-          <Text variant="micro" color={Colors.text4}>
-            Spending
-          </Text>
-          <Text variant="title" weight="semibold" color={Colors.text1} style={{ marginTop: 2 }}>
-            {formatCurrency(last.expense, { compact: true })}
-          </Text>
-        </View>
-      </View>
+      {/* Hero: same job as every other "did this period go well" number in
+          the app (BudgetHero, NetWorthHero) -- one answer, at hero scale,
+          not buried under two equal-weight stat tiles. */}
+      <Text
+        variant="display"
+        weight="bold"
+        color={Colors.text1}
+        style={{ marginTop: Spacing.sm, fontSize: 32, letterSpacing: -0.5, fontVariant: ['tabular-nums'] }}
+      >
+        {net >= 0 ? 'Saved ' : 'Spent '}
+        <Text variant="display" weight="bold" color={net >= 0 ? Colors.green : Colors.red} style={{ fontSize: 32 }}>
+          {formatCurrency(Math.abs(net), { compact: true })}
+        </Text>
+      </Text>
+      <Text variant="caption" color={Colors.text3} style={{ marginTop: 4 }}>
+        {net >= 0 ? `${savedPct}% of income this month` : 'more than you earned this month'}
+      </Text>
 
-      <Text variant="caption" color={net >= 0 ? Colors.green : Colors.red} style={{ marginTop: Spacing.sm }}>
-        {net >= 0
-          ? `Saved ${formatCurrency(net, { compact: true })} — ${savedPct}% of income`
-          : `Spent ${formatCurrency(Math.abs(net), { compact: true })} more than you earned`}
+      {/* Demoted from two equal-weight stat tiles to one supporting line --
+          still states both real numbers, just no longer competing with
+          the hero above for the same visual weight. */}
+      <Text variant="caption" color={Colors.text4} style={{ marginTop: Spacing.md }}>
+        Income {formatCurrency(last.income, { compact: true })} · Spending {formatCurrency(last.expense, { compact: true })}
       </Text>
 
       {periods.length > 1 && (
-        <View style={{ marginTop: Spacing.xl }}>
-          <Text variant="micro" weight="semibold" color={Colors.text4} style={{ textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: Spacing.sm }}>
-            Net savings, last {periods.length} months
-          </Text>
+        <View style={{ marginTop: Spacing.lg }}>
           <NetFlowChart periods={periods} height={90} />
         </View>
       )}

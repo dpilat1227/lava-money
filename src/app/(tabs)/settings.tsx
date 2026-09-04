@@ -1,17 +1,18 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
-import { Atmosphere, CategoryIcon, GlassSurface, Icon, IconBadge, InstitutionAvatar, ScreenHeader, Text, type IconName } from '@/components/ui';
-import { Breakpoints, ChartPalette, Colors, Radius, Spacing } from '@/constants/theme';
+import { AddCategoryModal } from '@/components/budgets/AddCategoryModal';
+import { Atmosphere, Button, CategoryIcon, GlassSurface, Icon, IconBadge, InstitutionAvatar, ScreenHeader, Text, type IconName } from '@/components/ui';
+import { Breakpoints, Colors, Radius, Spacing } from '@/constants/theme';
 import { useEscapeToClose } from '@/lib/hooks/useEscapeToClose';
 import { useTabBarBottomPadding } from '@/lib/hooks/useTabBarBottomPadding';
+import { findCategory } from '@/lib/mock/categories';
 import { useFinance } from '@/lib/store/FinanceContext';
+import type { Category, Transaction } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils/currency';
 import { exportAllDataAsJson, exportTransactionsAsCsv } from '@/lib/utils/export';
 import { needsAttention, presentSyncStatus } from '@/lib/utils/sync';
-
-const EMOJI_CHOICES = ['🏷️', '🐾', '👶', '🎁', '🧾', '⚽', '📚', '🚙', '✂️', '💊', '🎓', '🖥️', '🎮', '🌱', '☕', '🎵', '🛠️', '🏖️'];
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -26,16 +27,26 @@ export default function SettingsScreen() {
     resetAll,
     refreshAllLinked,
     addCustomCategory,
+    updateCustomCategory,
     deleteCustomCategory,
+    unhideTransaction,
   } = useFinance();
   const [exporting, setExporting] = useState<'json' | 'csv' | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
+  // Design-audit-round-4: null = closed, a Category = editing that one.
+  // Reuses AddCategoryModal for both -- same fields, just pre-filled and
+  // saving via updateCustomCategory instead of addCustomCategory.
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [showDataInfo, setShowDataInfo] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const tabBarBottomPadding = useTabBarBottomPadding();
 
   const linkedAccounts = accounts.filter(a => a.source === 'linked');
   const manualAccounts = accounts.filter(a => a.source === 'manual');
   const attentionCount = accounts.filter(needsAttention).length;
+  // "Hide," not "delete" -- so it needs a way back. See Transaction.hidden
+  // and transaction/[id].tsx's confirmHide for the other half of this.
+  const hiddenTransactions = transactions.filter(t => t.hidden);
 
   const confirmReset = () => {
     Alert.alert('Reset all data', 'This clears every account and transaction on this device. This cannot be undone.', [
@@ -194,8 +205,17 @@ export default function SettingsScreen() {
               sublabel="Excel, Sheets, Numbers"
               loading={exporting === 'csv'}
               onPress={() => runExport('csv')}
-              last
+              last={hiddenTransactions.length === 0}
             />
+            {hiddenTransactions.length > 0 && (
+              <Pressable onPress={() => setShowHidden(true)} style={styles.privacyRow}>
+                <IconBadge name="eyeOff" color={Colors.text3} size={30} />
+                <Text variant="body" color={Colors.text2} style={{ flex: 1, marginLeft: Spacing.sm }}>
+                  Hidden transactions ({hiddenTransactions.length})
+                </Text>
+                <Icon name="chevronRight" size={13} color={Colors.text4} />
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -211,7 +231,7 @@ export default function SettingsScreen() {
           </View>
           <View style={{ gap: Spacing.sm }}>
             <Text variant="micro" color={Colors.text4}>
-              Custom categories show up everywhere the starter list does -- Activity, Budgets, and Trends -- and can be edited or removed anytime.
+              Custom categories show up everywhere the starter list does -- Activity and Budgets -- and can be edited or removed anytime.
             </Text>
             {customCategories.length === 0 ? (
               <Text variant="body" color={Colors.text3}>
@@ -224,6 +244,11 @@ export default function SettingsScreen() {
                   <Text variant="body" weight="medium" color={c.color} style={{ flex: 1, marginLeft: Spacing.md }}>
                     {c.name}
                   </Text>
+                  <Pressable onPress={() => setEditingCategory(c)} hitSlop={8} style={{ marginRight: Spacing.lg }}>
+                    <Text variant="caption" color={Colors.text2} weight="semibold">
+                      Edit
+                    </Text>
+                  </Pressable>
                   <Pressable
                     onPress={() => {
                       Alert.alert(
@@ -281,7 +306,29 @@ export default function SettingsScreen() {
           }}
         />
       )}
+      {editingCategory && (
+        <AddCategoryModal
+          initial={editingCategory}
+          onClose={() => setEditingCategory(null)}
+          onSave={input => {
+            const ok = updateCustomCategory(editingCategory.id, input);
+            if (!ok) {
+              Alert.alert('Category exists', `There's already a category named "${input.name}."`);
+              return;
+            }
+            setEditingCategory(null);
+          }}
+        />
+      )}
       {showDataInfo && <DataInfoModal onClose={() => setShowDataInfo(false)} />}
+      {showHidden && (
+        <HiddenTransactionsModal
+          transactions={hiddenTransactions}
+          categories={categories}
+          onUnhide={unhideTransaction}
+          onClose={() => setShowHidden(false)}
+        />
+      )}
       </ScrollView>
     </View>
   );
@@ -363,7 +410,7 @@ function DataInfoModal({ onClose }: { onClose: () => void }) {
             </View>
 
             <View style={{ marginTop: Spacing.xl }}>
-              <PlainButton label="Got it" primary onPress={onClose} />
+              <Button label="Got it" onPress={onClose} fullWidth />
             </View>
           </Pressable>
         </GlassSurface>
@@ -372,120 +419,62 @@ function DataInfoModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function AddCategoryModal({
+/**
+ * The other half of "hide, don't delete" (see Transaction.hidden's doc) --
+ * a list of exactly what's hidden with a one-tap way back for each row.
+ * Deliberately minimal (no search/filter/sort) since this is meant to be
+ * a rarely-visited safety net, not a second transaction browser.
+ */
+function HiddenTransactionsModal({
+  transactions,
+  categories,
+  onUnhide,
   onClose,
-  onSave,
 }: {
+  transactions: Transaction[];
+  categories: Category[];
+  onUnhide: (transactionId: string) => void;
   onClose: () => void;
-  onSave: (input: { name: string; emoji: string; color: string }) => void;
 }) {
-  const [name, setName] = useState('');
-  const [emoji, setEmoji] = useState(EMOJI_CHOICES[0]);
-  const [color, setColor] = useState<string>(ChartPalette[0]);
-  const isValid = name.trim().length > 0;
-  const { width } = useWindowDimensions();
-  // Same call as EditBudgetModal: full-width symmetric buttons for touch,
-  // right-aligned auto-width buttons once there's a mouse/trackpad and a
-  // card that isn't thumb-reach constrained.
-  const isWideWeb = Platform.OS === 'web' && width >= Breakpoints.wide;
   useEscapeToClose(onClose);
-
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <GlassSurface style={styles.modalCard}>
-        <Pressable onPress={e => e.stopPropagation()}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg }}>
-            <CategoryIcon emoji={emoji} color={color} size={32} />
-            <Text variant="title">New category</Text>
-          </View>
-
-          <Text variant="caption" color={Colors.text3} style={{ marginBottom: 6 }}>
-            Name
-          </Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="e.g. Pets"
-            placeholderTextColor={Colors.text4}
-            style={styles.modalInput}
-            autoFocus
-          />
-
-          <Text variant="caption" color={Colors.text3} style={{ marginTop: Spacing.md, marginBottom: 6 }}>
-            Icon
-          </Text>
-          <View style={styles.emojiRow}>
-            {EMOJI_CHOICES.map(e => (
-              <Pressable
-                key={e}
-                onPress={() => setEmoji(e)}
-                style={[styles.emojiChip, e === emoji && { borderColor: color, backgroundColor: `${color}18` }]}
-              >
-                <Text style={{ fontSize: 16 }}>{e}</Text>
+        <GlassSurface style={[styles.modalCard, { maxWidth: 440 }]}>
+          <Pressable onPress={e => e.stopPropagation()}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md }}>
+              <Text variant="title">Hidden transactions</Text>
+              <Pressable onPress={onClose} hitSlop={12}>
+                <Icon name="close" size={15} color={Colors.text3} />
               </Pressable>
-            ))}
-          </View>
-
-          <Text variant="caption" color={Colors.text3} style={{ marginTop: Spacing.md, marginBottom: 6 }}>
-            Color
-          </Text>
-          <View style={styles.emojiRow}>
-            {ChartPalette.map(c => (
-              <Pressable
-                key={c}
-                onPress={() => setColor(c)}
-                style={[styles.colorSwatch, { backgroundColor: c }, c === color && styles.colorSwatchActive]}
-              />
-            ))}
-          </View>
-
-          <View style={[styles.modalFooterRow, isWideWeb && styles.modalFooterRowWide]}>
-            <View style={!isWideWeb && { flex: 1 }}>
-              <PlainButton label="Cancel" onPress={onClose} />
             </View>
-            <View style={!isWideWeb && { flex: 1 }}>
-              <PlainButton
-                label="Save"
-                primary
-                disabled={!isValid}
-                onPress={() => onSave({ name: name.trim(), emoji, color })}
-              />
-            </View>
-          </View>
-        </Pressable>
+            <ScrollView style={{ maxHeight: 420 }}>
+              {transactions.map((t, i) => {
+                const category = findCategory(categories, t.categoryId);
+                return (
+                  <View key={t.id} style={[styles.hiddenRow, i > 0 && styles.accountRowDivider]}>
+                    <CategoryIcon id={category.id} emoji={category.emoji} color={category.color} size={30} />
+                    <View style={{ flex: 1, marginLeft: Spacing.sm }}>
+                      <Text variant="body" numberOfLines={1}>
+                        {t.merchantName}
+                      </Text>
+                      <Text variant="micro" color={Colors.text4} style={{ marginTop: 2 }}>
+                        {formatCurrency(t.amount, { showSign: true })}
+                      </Text>
+                    </View>
+                    <Pressable onPress={() => onUnhide(t.id)} hitSlop={8}>
+                      <Text variant="caption" color={Colors.orange} weight="semibold">
+                        Unhide
+                      </Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
         </GlassSurface>
       </Pressable>
     </Modal>
-  );
-}
-
-/** Local, no-frills button -- avoids pulling in the shared `Button`
- * component's own margin/sizing assumptions for this one modal. */
-function PlainButton({
-  label,
-  onPress,
-  primary,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  primary?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={disabled ? undefined : onPress}
-      style={[
-        styles.plainButton,
-        primary && { backgroundColor: Colors.orangeCta, borderColor: Colors.orangeCta },
-        disabled && { opacity: 0.5 },
-      ]}
-    >
-      <Text variant="body" weight="semibold" color={primary ? '#fff' : Colors.text2}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -557,6 +546,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border1,
   },
+  hiddenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm + 2,
+  },
   institutionGroupDivider: {
     marginTop: Spacing.xs,
     paddingTop: Spacing.md,
@@ -606,44 +600,4 @@ const styles = StyleSheet.create({
     maxWidth: 380,
     padding: Spacing.xl,
   },
-  modalInput: {
-    backgroundColor: Colors.surface2,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md - 2,
-    color: Colors.text1,
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: Colors.border1,
-  },
-  emojiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  emojiChip: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surface2,
-    borderWidth: 1,
-    borderColor: Colors.border1,
-  },
-  colorSwatch: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  colorSwatchActive: { borderColor: Colors.text1 },
-  plainButton: {
-    alignItems: 'center',
-    paddingVertical: Spacing.md - 2,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border2,
-    backgroundColor: Colors.surface2,
-  },
-  modalFooterRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xl },
-  modalFooterRowWide: { justifyContent: 'flex-end' },
 });

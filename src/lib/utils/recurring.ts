@@ -114,7 +114,7 @@ export function detectRecurringSeries(transactions: Transaction[], accounts: Acc
   const groups = new Map<string, Group>();
 
   for (const t of transactions) {
-    if (t.isTransfer) continue;
+    if (t.isTransfer || t.hidden) continue;
     if (!accountIds.has(t.accountId)) continue; // stale reference to a removed/unlinked account
     const merchantKey = normalizeMerchant(t.merchantName);
     const groupKey = `${t.accountId}::${merchantKey}`;

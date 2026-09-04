@@ -52,16 +52,15 @@ export const WebPageShell = DesktopShell;
 // ScreenHeader, see (tabs)/_layout.tsx and (tabs)/transactions.tsx) -- this
 // used to be the one surface that disagreed with itself.
 //
-// "Recurring" isn't a native tab (five already fill the bottom bar
-// comfortably; see recurring.tsx's comment for why it's a pushed screen
-// there instead) -- but the sidebar has the vertical room a bottom bar
-// doesn't, and Copilot's own sidebar lists it directly, so it gets a
-// permanent nav item here even though native reaches it via links only.
-const NAV_ITEMS: { href: '/' | '/transactions' | '/budgets' | '/trends' | '/recurring'; label: string; icon: IconName }[] = [
+// IA restructure (design-audit-round-4): "Trends" is retired -- its
+// content moved into Budgets (see (tabs)/budgets.tsx's doc comment) -- and
+// "Recurring" is now a real tab on native too (was link-only before; see
+// (tabs)/recurring.tsx). This list, `NativeTabs` on native, and
+// `NarrowTabBar` below all stay in sync on the same five destinations now.
+const NAV_ITEMS: { href: '/' | '/transactions' | '/budgets' | '/recurring'; label: string; icon: IconName }[] = [
   { href: '/', label: 'Dashboard', icon: 'home' },
   { href: '/transactions', label: 'Activity', icon: 'receipt' },
   { href: '/budgets', label: 'Budgets', icon: 'pieChart' },
-  { href: '/trends', label: 'Trends', icon: 'trendingUp' },
   { href: '/recurring', label: 'Recurring', icon: 'sync' },
 ];
 
@@ -172,11 +171,15 @@ function AccountLink({ account }: { account: Account }) {
 
 function NarrowTabBar() {
   const pathname = usePathname();
-  const items: { href: '/' | '/transactions' | '/budgets' | '/trends' | '/settings'; icon: IconName }[] = [
+  // Was missing "/recurring" entirely before this pass (Trends had the
+  // slot instead) -- on a narrow browser window that meant Recurring had
+  // no persistent nav affordance at all, only reachable via inline links.
+  // Same five destinations as `NAV_ITEMS`/native now.
+  const items: { href: '/' | '/transactions' | '/budgets' | '/recurring' | '/settings'; icon: IconName }[] = [
     { href: '/', icon: 'home' },
     { href: '/transactions', icon: 'receipt' },
     { href: '/budgets', icon: 'pieChart' },
-    { href: '/trends', icon: 'trendingUp' },
+    { href: '/recurring', icon: 'sync' },
     { href: '/settings', icon: 'gear' },
   ];
   return (

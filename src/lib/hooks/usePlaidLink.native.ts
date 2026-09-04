@@ -83,8 +83,12 @@ export function usePlaidLink() {
    * at once (e.g. for a future Home pull-to-refresh) is just
    * `Promise.all(uniqueItemIds.map(refreshPlaidItem))` from a caller that
    * has the account list -- not built out here since nothing needs it yet. */
+  // Returns whether the sync actually succeeded -- `reauthenticate` below
+  // needs this to know whether a successful re-auth was *also* followed
+  // by a successful sync, rather than reporting "reconnected" for a
+  // reconnect whose immediate follow-up sync silently failed.
   const refreshPlaidItem = useCallback(
-    async (plaidItemId: string) => {
+    async (plaidItemId: string): Promise<boolean> => {
       const deviceId = await getOrCreateDeviceId();
       try {
         const result = await syncPlaidItem(deviceId, plaidItemId);
@@ -100,8 +104,10 @@ export function usePlaidLink() {
           modified: mapPlaidTransactions(result.modified),
           removedIds: result.removed.map(r => r.transaction_id),
         });
+        return true;
       } catch {
         markPlaidItemError(plaidItemId);
+        return false;
       }
     },
     [applyPlaidSync, markPlaidItemError]
@@ -112,5 +118,46 @@ export function usePlaidLink() {
     await removePlaidItem(deviceId, plaidItemId);
   }, []);
 
-  return { linking, linkBank, refreshPlaidItem, unlinkPlaidItem };
+  /**
+   * Design-audit-round-4: the only recovery path a degraded ("Connection
+   * issue") item had before this was `refreshPlaidItem` retrying
+   * `transactions/sync` -- which, for the actual failure mode that status
+   * means (ITEM_LOGIN_REQUIRED: the bank needs fresh credentials), just
+   * fails again and again with no user-facing explanation. Plaid's
+   * "update mode" is the real fix -- same Link UI, but scoped to
+   * re-authenticating one existing Item instead of creating a new one
+   * (see create-link-token/route.ts). `onSuccess` re-syncs immediately so
+   * the account flips back to "synced" in the same flow, instead of
+   * requiring a second manual refresh after reconnecting.
+   */
+  const reauthenticate = useCallback(
+    async (plaidItemId: string): Promise<PlaidLinkOutcome> => {
+      setLinking(true);
+      try {
+        const deviceId = await getOrCreateDeviceId();
+        const linkToken = await createLinkToken(deviceId, plaidItemId);
+
+        return await new Promise<PlaidLinkOutcome>(resolve => {
+          createPlaidLinkSession({
+            token: linkToken,
+            onSuccess: async () => {
+              const synced = await refreshPlaidItem(plaidItemId);
+              resolve(synced ? { ok: true } : { ok: false, error: 'Reconnected, but the next sync failed -- try refreshing again.' });
+            },
+            onExit: exit => {
+              resolve(exit.error ? { ok: false, error: exit.error.displayMessage ?? exit.error.errorMessage } : { ok: false, cancelled: true });
+            },
+            onEvent: () => {},
+          }).then(session => session.open());
+        });
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'Could not start reconnecting.' };
+      } finally {
+        setLinking(false);
+      }
+    },
+    [refreshPlaidItem]
+  );
+
+  return { linking, linkBank, refreshPlaidItem, unlinkPlaidItem, reauthenticate };
 }

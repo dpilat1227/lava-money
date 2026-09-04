@@ -102,7 +102,14 @@ function RootNavigator() {
       <Stack.Screen name="transaction/[id]" options={{ presentation: 'modal' }} />
       <Stack.Screen name="account/[id]" options={{ presentation: 'modal' }} />
       <Stack.Screen name="review-categories" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="recurring" options={{ presentation: 'modal' }} />
+      {/* "recurring" (was a modal route here) is now a full tab -- see
+          (tabs)/recurring.tsx and (tabs)/_layout.tsx. */}
+      {/* Design-audit-round-4: these two were never registered as modals --
+          they fell back to a plain pushed screen, which is why swipe-down
+          to dismiss silently did nothing on both (that gesture only exists
+          on modal presentation) while every sibling detail screen had it. */}
+      <Stack.Screen name="category/[id]" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="recurring-item/[id]" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }

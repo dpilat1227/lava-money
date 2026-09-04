@@ -64,9 +64,11 @@ export function DesktopDashboard() {
   const monthlySpendWithData = monthlySpend.filter(p => p.total > 0);
   const monthlyAverage = monthlySpendWithData.length > 0 ? monthlySpendWithData.reduce((s, p) => s + p.total, 0) / monthlySpendWithData.length : 0;
 
-  // "Top categories" is a teaser, not the chart -- the full stacked-bar
-  // breakdown with a legend lives on Trends now (see CategoryStackedBarChart
-  // / DesktopTrends). Reuses `thisMonth` (monthlySpend's own last entry)
+  // "Top categories" is a teaser, not the chart -- the full ranked
+  // breakdown (every category, budgeted or not, plus the segmented
+  // proportion bar) lives on Budgets now (`BudgetBreakdownCard`; see
+  // design-audit-round-4's IA restructure). Reuses `thisMonth`
+  // (monthlySpend's own last entry)
   // rather than a second `useSpendByPeriod('month', 1, ...)` call -- this
   // and "Monthly spending" used to run two independent queries that could
   // (and did) disagree about what month "the current one" meant on the
@@ -143,7 +145,9 @@ export function DesktopDashboard() {
             <Text variant="subtitle" color={Colors.text2}>
               Top categories
             </Text>
-            <Link href="/trends" asChild>
+            {/* Trends retired -- category ranking lives on Budgets now
+                (BudgetBreakdownCard), design-audit-round-4. */}
+            <Link href="/budgets" asChild>
               <Pressable>
                 <Text variant="caption" color={Colors.orange}>
                   View all ›

@@ -69,10 +69,12 @@ type Action =
   | { type: 'ADD_TRANSACTION'; transactionId: string; input: ManualTransactionInput }
   | { type: 'UPDATE_TRANSACTION'; transactionId: string; patch: Partial<Pick<Transaction, 'merchantName' | 'amount' | 'date' | 'categoryId'>> }
   | { type: 'DELETE_TRANSACTION'; transactionId: string }
+  | { type: 'SET_TRANSACTION_HIDDEN'; transactionId: string; hidden: boolean }
   | { type: 'IMPORT_TRANSACTIONS'; accountId: string; rows: ParsedTransactionRow[] }
   | { type: 'REFRESH_ACCOUNT'; accountId: string }
   | { type: 'REFRESH_ALL_LINKED' }
   | { type: 'ADD_CUSTOM_CATEGORY'; category: Category }
+  | { type: 'UPDATE_CUSTOM_CATEGORY'; categoryId: string; patch: Partial<Pick<Category, 'name' | 'emoji' | 'color'>> }
   | { type: 'DELETE_CUSTOM_CATEGORY'; categoryId: string }
   | { type: 'ACKNOWLEDGE_PAUSE'; transactionId: string };
 
@@ -292,6 +294,13 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       return { ...state, transactions: state.transactions.filter(t => t.id !== action.transactionId) };
     }
 
+    case 'SET_TRANSACTION_HIDDEN': {
+      return {
+        ...state,
+        transactions: state.transactions.map(t => (t.id === action.transactionId ? { ...t, hidden: action.hidden } : t)),
+      };
+    }
+
     case 'IMPORT_TRANSACTIONS': {
       const imported: Transaction[] = action.rows.map(row => {
         const guess = categorizeMerchant(row.merchantName, row.amount);
@@ -333,6 +342,28 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       );
       if (nameTaken) return state;
       return { ...state, customCategories: [...state.customCategories, action.category] };
+    }
+
+    case 'UPDATE_CUSTOM_CATEGORY': {
+      // Design-audit-round-4: custom categories could be deleted but never
+      // renamed/recolored/re-iconed after creation -- the only editable
+      // thing about them was whether they existed at all. Name collisions
+      // get the same case-insensitive check ADD_CUSTOM_CATEGORY uses,
+      // ignoring the category's own current name so re-saving without
+      // actually changing it never trips the guard.
+      if (action.patch.name != null) {
+        const nextName = action.patch.name.trim();
+        const nameTaken = [...CATEGORIES, ...state.customCategories].some(
+          c => c.id !== action.categoryId && c.name.toLowerCase() === nextName.toLowerCase()
+        );
+        if (nameTaken || !nextName) return state;
+      }
+      return {
+        ...state,
+        customCategories: state.customCategories.map(c =>
+          c.id === action.categoryId ? { ...c, ...action.patch, name: action.patch.name?.trim() ?? c.name } : c
+        ),
+      };
     }
 
     case 'ACKNOWLEDGE_PAUSE': {
@@ -401,12 +432,19 @@ interface FinanceContextValue extends FinanceState {
   addTransaction: (input: ManualTransactionInput) => string;
   updateTransaction: (transactionId: string, patch: Partial<Pick<Transaction, 'merchantName' | 'amount' | 'date' | 'categoryId'>>) => void;
   deleteTransaction: (transactionId: string) => void;
+  /** Reversible -- see Transaction.hidden's doc for why this exists
+   * alongside (not instead of) deleteTransaction. */
+  hideTransaction: (transactionId: string) => void;
+  unhideTransaction: (transactionId: string) => void;
   importTransactions: (accountId: string, rows: ParsedTransactionRow[]) => void;
   refreshAccount: (accountId: string) => void;
   refreshAllLinked: () => void;
   /** Returns the new category's id, or null if the name collided with an
    * existing category (case-insensitive) and nothing was created. */
   addCustomCategory: (input: CustomCategoryInput) => string | null;
+  /** Returns false (and leaves state untouched) if the new name collides
+   * with another existing category, same rule as `addCustomCategory`. */
+  updateCustomCategory: (categoryId: string, patch: Partial<Pick<Category, 'name' | 'emoji' | 'color'>>) => boolean;
   deleteCustomCategory: (categoryId: string) => void;
   acknowledgePause: (transactionId: string) => void;
 }
@@ -494,6 +532,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       },
       updateTransaction: (transactionId, patch) => dispatch({ type: 'UPDATE_TRANSACTION', transactionId, patch }),
       deleteTransaction: transactionId => dispatch({ type: 'DELETE_TRANSACTION', transactionId }),
+      hideTransaction: transactionId => dispatch({ type: 'SET_TRANSACTION_HIDDEN', transactionId, hidden: true }),
+      unhideTransaction: transactionId => dispatch({ type: 'SET_TRANSACTION_HIDDEN', transactionId, hidden: false }),
       importTransactions: (accountId, rows) => dispatch({ type: 'IMPORT_TRANSACTIONS', accountId, rows }),
       refreshAccount: accountId => dispatch({ type: 'REFRESH_ACCOUNT', accountId }),
       refreshAllLinked: () => dispatch({ type: 'REFRESH_ALL_LINKED' }),
@@ -510,6 +550,18 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
           category: { id, name, emoji: input.emoji || '🏷️', color: input.color, group: 'expense', isCustom: true },
         });
         return id;
+      },
+      updateCustomCategory: (categoryId, patch) => {
+        if (patch.name != null) {
+          const nextName = patch.name.trim();
+          if (!nextName) return false;
+          const nameTaken = [...CATEGORIES, ...state.customCategories].some(
+            c => c.id !== categoryId && c.name.toLowerCase() === nextName.toLowerCase()
+          );
+          if (nameTaken) return false;
+        }
+        dispatch({ type: 'UPDATE_CUSTOM_CATEGORY', categoryId, patch });
+        return true;
       },
       deleteCustomCategory: categoryId => dispatch({ type: 'DELETE_CUSTOM_CATEGORY', categoryId }),
       acknowledgePause: transactionId => dispatch({ type: 'ACKNOWLEDGE_PAUSE', transactionId }),

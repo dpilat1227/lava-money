@@ -35,7 +35,7 @@ export default function AccountDetailModal() {
   const { width } = useWindowDimensions();
   const isWideWeb = Platform.OS === 'web' && width >= Breakpoints.wide;
   const { accounts, institutions, transactions, categories, budgets, unlinkAccount, refreshAccount, importTransactions, acknowledgePause } = useFinance();
-  const { refreshPlaidItem, unlinkPlaidItem } = usePlaidLink();
+  const { refreshPlaidItem, reauthenticate, unlinkPlaidItem } = usePlaidLink();
   const [sheet, setSheet] = useState<SheetName>('none');
   const [refreshing, setRefreshing] = useState(false);
   const [csvPreview, setCsvPreview] = useState<{ fileName: string; rows: ParsedTransactionRow[]; warnings: string[] } | null>(null);
@@ -64,13 +64,27 @@ export default function AccountDetailModal() {
   const status = presentSyncStatus(account);
   const displayBalance = isAssetAccount(account.type) ? account.balance : -account.balance;
 
-  const doRefresh = () => {
+  // Design-audit-round-4: "Refresh now" on a real Plaid item used to
+  // always retry `transactions/sync`, silently -- the two actual gaps
+  // that closes: (1) a credential-level failure (ITEM_LOGIN_REQUIRED --
+  // `syncStatus === 'error'`) can't be fixed by retrying the same sync
+  // call, it needs Plaid's update-mode re-auth (see `reauthenticate`'s
+  // own doc); (2) whichever path runs, a failure now actually tells the
+  // user something instead of just... not updating, with no explanation.
+  const doRefresh = async () => {
     setRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     // Real Plaid connections sync for real; mock-linked accounts keep the
     // simulated delay/random-failure behavior they've always had.
     if (account.plaidItemId) {
-      refreshPlaidItem(account.plaidItemId).finally(() => setRefreshing(false));
+      const outcome =
+        account.syncStatus === 'error'
+          ? await reauthenticate(account.plaidItemId)
+          : (await refreshPlaidItem(account.plaidItemId)) ? { ok: true as const } : { ok: false as const, error: 'Could not refresh this account -- please try again in a moment.' };
+      setRefreshing(false);
+      if (!outcome.ok && !outcome.cancelled) {
+        Alert.alert('Refresh failed', outcome.error ?? 'Please try again.');
+      }
       return;
     }
     setTimeout(() => {
@@ -290,7 +304,11 @@ export default function AccountDetailModal() {
                 key={tx.id}
                 tx={tx}
                 categories={categories}
-                onPress={() => router.push(`/transaction/${tx.id}`)}
+                // `replace`, not `push` -- see the matching comment on
+                // transaction/[id].tsx's account-card press for the full
+                // reasoning (design-audit-round-4 nav fix: this and that
+                // call site are the two ends of the same bounce-loop).
+                onPress={() => router.replace(`/transaction/${tx.id}`)}
                 statusNote={tx.entrySource === 'import' ? 'Imported' : tx.entrySource === 'manual' ? 'Manual' : undefined}
               />
             ))}

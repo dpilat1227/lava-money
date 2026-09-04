@@ -46,6 +46,7 @@ export default function TransactionDetailModal() {
     categorizeTransaction,
     setNote,
     deleteTransaction,
+    hideTransaction,
     acknowledgePause,
   } = useFinance();
   const [pickingCategory, setPickingCategory] = useState(false);
@@ -92,14 +93,37 @@ export default function TransactionDetailModal() {
 
   const close = () => router.back();
 
+  // Design-audit-round-4: "instead of 'deleting' a transaction, you can
+  // 'hide' it so if you ever need to see it again it's still there" --
+  // also the semantically honest action for anything bank-linked (the
+  // bank still has the real record; this app never actually held the
+  // authoritative copy to delete). Manual entries are the one case where
+  // the user really is the sole author, so hard delete stays available
+  // there specifically -- same `entrySource === 'manual'` gate Activity's
+  // swipe-to-delete already uses.
+  const isManual = tx.entrySource === 'manual';
+
   const confirmDelete = () => {
-    Alert.alert('Delete transaction', `Remove "${tx.merchantName}" from your history?`, [
+    Alert.alert('Delete transaction', `Remove "${tx.merchantName}" from your history? This can't be undone.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
           deleteTransaction(tx.id);
+          close();
+        },
+      },
+    ]);
+  };
+
+  const confirmHide = () => {
+    Alert.alert('Hide transaction', `"${tx.merchantName}" won't show in Activity or count toward budgets. Unhide it anytime from Settings.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Hide',
+        onPress: () => {
+          hideTransaction(tx.id);
           close();
         },
       },
@@ -162,7 +186,18 @@ export default function TransactionDetailModal() {
       )}
 
       {account && (
-        <Pressable onPress={() => router.push(`/account/${account.id}`)} style={styles.accountCard}>
+        // Design-audit-round-4 nav fix: `replace`, not `push` -- transaction
+        // and account detail are the two ends of a loop someone can bounce
+        // between indefinitely (transaction -> account -> a different
+        // transaction -> that one's account -> ...); `push`ing every hop
+        // grew the stack unbounded, so "Close" only ever dismissed one
+        // level and got called "an infinite loop of popups" in review.
+        // `replace` swaps this modal frame for the next one instead of
+        // stacking on top of it -- Close from anywhere in the loop always
+        // takes you directly back to wherever you started (Activity, or
+        // whatever list you drilled in from), in exactly one tap, no
+        // matter how many times you bounced between the two screens.
+        <Pressable onPress={() => router.replace(`/account/${account.id}`)} style={styles.accountCard}>
           <InstitutionAvatar name={institution?.name ?? account.name} color={institution?.color ?? Colors.text3} size={38} />
           <View style={{ flex: 1, marginLeft: Spacing.md }}>
             <Text variant="body" weight="medium" numberOfLines={1}>
@@ -180,8 +215,13 @@ export default function TransactionDetailModal() {
 
       <View style={styles.actionRow}>
         <PillButton label="Change category" icon="pencil" tone={pickingCategory ? 'accent' : 'neutral'} onPress={() => setPickingCategory(v => !v)} />
-        {account && <PillButton label="View account" icon="card" onPress={() => router.push(`/account/${account.id}`)} />}
-        <PillButton label="Delete" icon="trash" tone="danger" onPress={confirmDelete} />
+        {/* Same `replace` reasoning as the account card above. */}
+        {account && <PillButton label="View account" icon="card" onPress={() => router.replace(`/account/${account.id}`)} />}
+        {isManual ? (
+          <PillButton label="Delete" icon="trash" tone="danger" onPress={confirmDelete} />
+        ) : (
+          <PillButton label="Hide" icon="eyeOff" tone="neutral" onPress={confirmHide} />
+        )}
       </View>
 
       {pickingCategory && (

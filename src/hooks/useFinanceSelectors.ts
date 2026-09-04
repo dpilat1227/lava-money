@@ -45,9 +45,9 @@ export function useNetWorthSummary() {
   }, [history]);
 }
 
-/** Real (non-transfer) transactions for a given YYYY-MM month key. */
+/** Real (non-transfer, non-hidden) transactions for a given YYYY-MM month key. */
 function monthTransactions(transactions: Transaction[], month: string): Transaction[] {
-  return transactions.filter(t => !t.isTransfer && monthKey(t.date) === month);
+  return transactions.filter(t => !t.isTransfer && !t.hidden && monthKey(t.date) === month);
 }
 
 export function useCurrentMonthSpendByCategory(): Map<string, number> {
@@ -226,7 +226,7 @@ export function useCategorySpendTotals(monthsBack = 1, completeOnly = false): { 
     const end = completeOnly ? new Date(now.getFullYear(), now.getMonth() - endOffset + 1, 1) : null;
     const totals = new Map<string, number>();
     for (const t of transactions) {
-      if (t.isTransfer || t.amount >= 0) continue;
+      if (t.isTransfer || t.hidden || t.amount >= 0) continue;
       const d = new Date(t.date + 'T00:00:00');
       if (d < cutoff) continue;
       if (end && d >= end) continue;
@@ -301,7 +301,7 @@ export function useSpendByPeriod(granularity: SpendGranularity, periods: number,
       const byCategory = new Map<string, number>();
       let total = 0;
       for (const t of transactions) {
-        if (t.isTransfer || t.amount >= 0) continue;
+        if (t.isTransfer || t.hidden || t.amount >= 0) continue;
         const d = new Date(t.date + 'T00:00:00');
         if (d < start || d >= end) continue;
         const amt = Math.abs(t.amount);
@@ -345,7 +345,7 @@ export function useCategoryMonthlyHistory(categoryId: string, monthsBack = 13): 
 export function useCategoryTransactions(categoryId: string): Transaction[] {
   const { transactions } = useFinance();
   return useMemo(
-    () => transactions.filter(t => t.categoryId === categoryId).sort((a, b) => (a.date < b.date ? 1 : -1)),
+    () => transactions.filter(t => t.categoryId === categoryId && !t.hidden).sort((a, b) => (a.date < b.date ? 1 : -1)),
     [transactions, categoryId]
   );
 }
@@ -354,7 +354,11 @@ export function useCategoryTransactions(categoryId: string): Transaction[] {
 export function useGroupedTransactions(searchQuery = '', accountId?: string) {
   const { transactions } = useFinance();
   return useMemo(() => {
-    let filtered = transactions;
+    // Hidden rows drop out of the visible ledger entirely (that's the
+    // point -- see Transaction.hidden's doc), but stay in `transactions`
+    // itself so Settings' "Hidden transactions" row can still list and
+    // unhide them.
+    let filtered = transactions.filter(t => !t.hidden);
     if (accountId) filtered = filtered.filter(t => t.accountId === accountId);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();

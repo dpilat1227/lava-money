@@ -32,7 +32,7 @@ export function isDiscretionaryCategory(categoryId: string): boolean {
  * qualify regardless of categoryId -- there's no discretionary-spend
  * question to reflect on for money moving the other way. */
 export function isPauseEligible(tx: Transaction): boolean {
-  return tx.amount < 0 && !tx.isTransfer && isDiscretionaryCategory(tx.categoryId);
+  return tx.amount < 0 && !tx.isTransfer && !tx.hidden && isDiscretionaryCategory(tx.categoryId);
 }
 
 export interface PauseContext {
@@ -51,7 +51,7 @@ export interface PauseContext {
 export function buildPauseContext(tx: Transaction, transactions: Transaction[], budgets: Budget[], category: Category): PauseContext {
   const targetMonth = monthKey(tx.date);
   const sameMonthSameCategory = transactions.filter(
-    t => t.categoryId === tx.categoryId && !t.isTransfer && t.amount < 0 && monthKey(t.date) === targetMonth
+    t => t.categoryId === tx.categoryId && !t.isTransfer && !t.hidden && t.amount < 0 && monthKey(t.date) === targetMonth
   );
   const monthTotal = sameMonthSameCategory.reduce((sum, t) => sum + Math.abs(t.amount), 0);
   const budget = budgets.find(b => b.categoryId === tx.categoryId);

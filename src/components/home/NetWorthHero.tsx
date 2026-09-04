@@ -190,7 +190,23 @@ const styles = {
   rangeRow: { flexDirection: 'row' as const, justifyContent: 'flex-start' as const, gap: Spacing.xs, marginTop: Spacing.lg },
   rangeChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: Radius.pill },
   rangeChipActive: { backgroundColor: Colors.orangeSoft },
-  statTilesRow: { flexDirection: 'row' as const, alignItems: 'center' as const, marginTop: Spacing.lg },
+  // Design-audit-round-4: "the second section is assets and liabilities...
+  // it's neither in a card or centered or anything else" -- the hero
+  // number+chart above is deliberately full-bleed (Ember tenet 4's one
+  // exception per screen), but everything *below* it on Home alternates
+  // between bare and boxed with no stated reason. A soft contained
+  // background (the same `surfaceSubtle` "barely-there" fill `resting`
+  // cards use, not a hard card border) gives this its own visual unit
+  // without competing with the hero number two lines above it.
+  statTilesRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    marginTop: Spacing.lg,
+    backgroundColor: Colors.surfaceSubtle,
+    borderRadius: Radius.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
   statTile: { flex: 1 },
   statTileDivider: { width: 1, height: 28, backgroundColor: Colors.border1, marginHorizontal: Spacing.lg },
   statLabel: { textTransform: 'uppercase' as const, letterSpacing: 0.5 },

@@ -46,7 +46,7 @@ export function projectMonthlyIncomeAndExpense(
   const dayOfMonth = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
-  const thisMonthTx = transactions.filter(t => !t.isTransfer && monthKeyOf(t.date) === currentMonthKey);
+  const thisMonthTx = transactions.filter(t => !t.isTransfer && !t.hidden && monthKeyOf(t.date) === currentMonthKey);
   const totalIncomeSoFar = thisMonthTx.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const totalSpendSoFar = thisMonthTx.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
 
@@ -87,7 +87,7 @@ export function projectMonthlyIncomeAndExpense(
  * non-projected "so far" figure alongside the projection above. */
 export function actualNetForMonth(transactions: Transaction[], monthsAgo: number, now: Date = new Date()): number {
   const key = monthKeyOffset(now, monthsAgo);
-  return transactions.filter(t => !t.isTransfer && monthKeyOf(t.date) === key).reduce((s, t) => s + t.amount, 0);
+  return transactions.filter(t => !t.isTransfer && !t.hidden && monthKeyOf(t.date) === key).reduce((s, t) => s + t.amount, 0);
 }
 
 /**

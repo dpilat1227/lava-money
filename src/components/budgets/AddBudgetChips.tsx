@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { CategoryIcon, Text } from '@/components/ui';
+import { CategoryIcon, Icon, Text } from '@/components/ui';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import type { Category } from '@/lib/types';
 
@@ -9,12 +9,20 @@ export function AddBudgetChips({
   title = 'Add a budget',
   categories,
   onSelect,
+  onCreateNew,
 }: {
   title?: string;
   categories: Category[];
   onSelect: (categoryId: string) => void;
+  /** IA restructure (design-audit-round-4): "the add category feature
+   * should be in Budgets, not Settings" -- a trailing chip here means
+   * creating a category and giving it a budget can be one continuous
+   * flow (see budgets.tsx's `handleCreateCategory`) instead of a round-
+   * trip through Settings. Optional so DesktopBudgets/other callers that
+   * don't wire this yet degrade to the old plain grid, not a crash. */
+  onCreateNew?: () => void;
 }) {
-  if (categories.length === 0) return null;
+  if (categories.length === 0 && !onCreateNew) return null;
 
   return (
     <View>
@@ -30,6 +38,14 @@ export function AddBudgetChips({
             </Text>
           </Pressable>
         ))}
+        {onCreateNew && (
+          <Pressable onPress={onCreateNew} style={({ pressed }) => [styles.chip, styles.newChip, pressed && { opacity: 0.7 }]}>
+            <Icon name="plusCircle" size={18} color={Colors.orange} />
+            <Text variant="caption" weight="semibold" color={Colors.orange} numberOfLines={1}>
+              New category
+            </Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -47,5 +63,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface2,
     borderWidth: 1,
     borderColor: Colors.border1,
+  },
+  // Dashed + transparent fill (vs. the solid chips above) so "create
+  // something new" reads as visually distinct from "select an existing
+  // category," not just a chip that happens to say different words.
+  newChip: {
+    backgroundColor: 'transparent',
+    borderStyle: 'dashed',
+    borderColor: `${Colors.orange}55`,
   },
 });

@@ -42,8 +42,8 @@ export const Colors = {
    * `border1` hairlines, the same treatment Activity's transaction list
    * already had. This is what's left for the handful of *secondary*
    * single-purpose cards that aren't a list and aren't the one hero on
-   * screen (`SpendingCard`, `CashFlowCard`, `RecurringTeaserCard`,
-   * `NeedsAttentionCard`, `GetStartedNudge`) -- present enough to read as
+   * screen (`SpendingCard`, `CashFlowCard`, `NeedsAttentionCard`,
+   * `GetStartedNudge`) -- present enough to read as
    * "grouped," not present enough to compete with the actual hero card. */
   surfaceSubtle: 'rgba(255,241,225,0.035)',
   /** Sheet/modal fill — deliberately closer to opaque than any card tint,
@@ -238,8 +238,8 @@ export const Shadow = {
  *   `resting`'s doc for why.
  * - `resting` — the default. Single-purpose *cards* (one stat pair, one
  *   banner) that aren't a list and aren't the hero -- `SpendingCard`,
- *   `CashFlowCard`, `RecurringTeaserCard`, `NeedsAttentionCard`,
- *   `GetStartedNudge`. Design-audit-round-3: switched from a solid
+ *   `CashFlowCard`, `NeedsAttentionCard`, `GetStartedNudge`.
+ *   Design-audit-round-3: switched from a solid
  *   `surface2` fill to `surfaceSubtle` (barely-there) with no shadow -- a
  *   drop shadow under a near-transparent fill read as a box floating above
  *   the screen for no reason. Multi-row list *containers* (an accounts

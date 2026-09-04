@@ -2,11 +2,14 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { AddBudgetChips } from '@/components/budgets/AddBudgetChips';
+import { AddCategoryModal } from '@/components/budgets/AddCategoryModal';
 import { BudgetBreakdownCard } from '@/components/budgets/BudgetBreakdownCard';
 import { BudgetHero } from '@/components/budgets/BudgetHero';
 import { BudgetList } from '@/components/budgets/BudgetList';
 import { EditBudgetModal } from '@/components/budgets/EditBudgetModal';
 import { SmartSetupCard } from '@/components/budgets/SmartSetupCard';
+import { CashFlowCard } from '@/components/trends/CashFlowCard';
+import { SpendingHeroCard } from '@/components/trends/SpendingHeroCard';
 import { Text } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import type { BudgetProgress } from '@/hooks/useFinanceSelectors';
@@ -28,6 +31,10 @@ export function DesktopBudgets({
   editing,
   onEdit,
   onSmartSetup,
+  creatingCategory,
+  onStartCreateCategory,
+  onCancelCreateCategory,
+  onCreateCategory,
 }: {
   progress: BudgetProgress[];
   categories: Category[];
@@ -35,6 +42,10 @@ export function DesktopBudgets({
   editing: string | null;
   onEdit: (categoryId: string | null) => void;
   onSmartSetup: () => void;
+  creatingCategory: boolean;
+  onStartCreateCategory: () => void;
+  onCancelCreateCategory: () => void;
+  onCreateCategory: (input: { name: string; emoji: string; color: string }) => void;
 }) {
   const { setBudget } = useFinance();
 
@@ -70,9 +81,18 @@ export function DesktopBudgets({
           </View>
         </View>
         <View style={styles.sideCol}>
-          <AddBudgetChips categories={unbudgeted} onSelect={onEdit} />
+          <AddBudgetChips categories={unbudgeted} onSelect={onEdit} onCreateNew={onStartCreateCategory} />
           <View style={{ marginTop: Spacing.xl }}>
             <BudgetBreakdownCard />
+          </View>
+          {/* IA restructure (design-audit-round-4): Trends is retired --
+              see the mobile budgets.tsx doc comment for the full
+              reasoning, shared verbatim here. */}
+          <View style={{ marginTop: Spacing.xl }}>
+            <SpendingHeroCard />
+          </View>
+          <View style={{ marginTop: Spacing.xl }}>
+            <CashFlowCard />
           </View>
         </View>
       </View>
@@ -89,6 +109,8 @@ export function DesktopBudgets({
           }}
         />
       )}
+
+      {creatingCategory && <AddCategoryModal onClose={onCancelCreateCategory} onSave={onCreateCategory} />}
     </ScrollView>
   );
 }

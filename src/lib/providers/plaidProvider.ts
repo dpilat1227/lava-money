@@ -87,8 +87,11 @@ export interface PlaidRawRemovedTransaction {
   transaction_id: string;
 }
 
-export async function createLinkToken(deviceId: string): Promise<string> {
-  const { linkToken } = await postJson<{ linkToken: string }>('/api/plaid/create-link-token', { deviceId });
+/** `itemId` present -> Plaid "update mode" (re-authenticate an existing,
+ * degraded connection) instead of linking a brand-new one -- see
+ * create-link-token/route.ts's doc for the full mechanism. */
+export async function createLinkToken(deviceId: string, itemId?: string): Promise<string> {
+  const { linkToken } = await postJson<{ linkToken: string }>('/api/plaid/create-link-token', { deviceId, itemId });
   return linkToken;
 }
 

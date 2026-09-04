@@ -13,8 +13,9 @@ const WEEKS_SHOWN = 6;
 /**
  * Replaces `InsightChips`' three equal-weight boxes on Home with one
  * focused card: this month's total spend, a plain-language comparison to
- * last month, and the same Apple-Card-style category bar chart Trends
- * uses. Tapping anywhere routes to Trends for the full breakdown --
+ * last month, and the same Apple-Card-style category bar chart Budgets'
+ * own spending-over-time card uses. Tapping anywhere routes to Budgets for
+ * the full breakdown (design-audit-round-4: was Trends, since retired) --
  * progressive disclosure instead of a second dashboard competing with the
  * net worth hero above it.
  */
@@ -60,7 +61,7 @@ export function SpendingCard() {
     // with real spacing instead of sitting jammed under the headline.
     // `level="resting"` now inherits the lighter `surfaceSubtle` fill from
     // the theme-foundation pass -- no code change needed here for that.
-    <Card level="resting" onPress={() => router.push('/trends')} style={{ gap: Spacing.lg }}>
+    <Card level="resting" onPress={() => router.push('/budgets')} style={{ gap: Spacing.lg }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <View style={{ flex: 1 }}>
           <Text variant="caption" color={Colors.text3}>

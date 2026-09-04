@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 
-import { Button, GlassSurface, Icon, Text } from '@/components/ui';
+import { Button, GlassSurface, Icon, IconBadge, Text } from '@/components/ui';
 import { Breakpoints, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { isAssetAccount, type SavingsGoal, type SavingsGoalType } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils/currency';
+import { actualNetForMonth, debtPaidDownForMonth } from '@/lib/utils/savingsGoal';
 
 const PRESET_AMOUNTS = [200, 500, 1000, 2000];
 
@@ -17,6 +18,21 @@ const PRESET_AMOUNTS = [200, 500, 1000, 2000];
  * type picker, since a goal can be "save" or "pay down debt" -- see
  * SavingsGoal's doc in lib/types.ts for why both exist as equals rather
  * than debt payoff being a variant of savings.
+ *
+ * Design-audit-round-4: "the 'set monthly goal' popup design is atrocious"
+ * -- two concrete gaps this closes relative to EditBudgetModal, which
+ * *wasn't* singled out the same way despite the same underlying pattern:
+ * (1) no icon anchor at the top (just a bare title, versus EditBudgetModal's
+ * category icon+name), and (2) no live data anywhere (EditBudgetModal
+ * shows "$0.00 spent so far" against the limit you're setting; this asked
+ * you to commit to a number in a total vacuum). Both fixed below --
+ * `IconBadge` swaps icon with the type toggle, and a live "already saved/
+ * paid down $X this month" line computes independently of whether a goal
+ * is saved yet (so it works identically whether creating or editing one).
+ * Also trimmed the old subhead's "same idea as a bill that hasn't posted
+ * yet" analogy -- that explanation already has a dedicated home
+ * (BudgetHero's own "what this means" info modal); saying it a second
+ * time here was exactly the "too much text" complaint from review.
  */
 export function EditSavingsGoalModal({
   currentGoal,
@@ -27,7 +43,7 @@ export function EditSavingsGoalModal({
   onClose: () => void;
   onSave: (goal: SavingsGoal) => void;
 }) {
-  const { accounts } = useFinance();
+  const { accounts, transactions } = useFinance();
   const liabilityAccounts = accounts.filter(a => !isAssetAccount(a.type));
 
   const [type, setType] = useState<SavingsGoalType>(currentGoal?.type ?? 'save');
@@ -39,6 +55,15 @@ export function EditSavingsGoalModal({
   const { width } = useWindowDimensions();
   const isWideWeb = Platform.OS === 'web' && width >= Breakpoints.wide;
 
+  // Live, independent of whether a goal is actually saved yet -- reads the
+  // exact same underlying numbers BudgetHero's own progress line will show
+  // once this saves, computed directly instead of through
+  // `useSavingsGoalProgress()` (which returns a zeroed-out shape until a
+  // goal exists in global state, so it can't answer "what would this look
+  // like" while still creating one).
+  const debtAccount = accounts.find(a => a.id === debtAccountId);
+  const actualSoFar = type === 'debt_payoff' ? (debtAccount ? debtPaidDownForMonth(debtAccount, transactions, 0) : 0) : actualNetForMonth(transactions, 0);
+
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
       {/* Same keyboard-avoidance fix as EditBudgetModal -- built in from the
@@ -48,12 +73,10 @@ export function EditSavingsGoalModal({
         <Pressable style={styles.modalBackdrop} onPress={onClose}>
           <GlassSurface style={styles.modalCard}>
             <Pressable onPress={e => e.stopPropagation()}>
-              <Text variant="title" style={{ marginBottom: 4 }}>
-                Set a monthly goal
-              </Text>
-              <Text variant="caption" color={Colors.text3} style={{ marginBottom: Spacing.lg }}>
-                Counted as committed before "left to spend" -- same idea as a bill that hasn't posted yet.
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg }}>
+                <IconBadge name={type === 'save' ? 'trendingUp' : 'arrowDownRight'} color={Colors.orange} size={36} />
+                <Text variant="title">{currentGoal ? 'Edit monthly goal' : 'Set a monthly goal'}</Text>
+              </View>
 
               <View style={styles.typeRow}>
                 <Pressable onPress={() => setType('save')} style={[styles.typeChip, type === 'save' && styles.typeChipActive]}>
@@ -120,6 +143,17 @@ export function EditSavingsGoalModal({
                     </Text>
                   </Pressable>
                 ))}
+              </View>
+
+              {/* Live preview -- see doc comment above for why this is
+                  computed independently of whether a goal exists yet. */}
+              <View style={styles.livePreview}>
+                <Text variant="caption" color={Colors.text3}>
+                  {type === 'debt_payoff' ? 'Paid down so far this month' : 'Saved so far this month'}
+                </Text>
+                <Text variant="body" weight="semibold" color={actualSoFar >= 0 ? Colors.green : Colors.red} style={{ fontVariant: ['tabular-nums'] }}>
+                  {formatCurrency(actualSoFar, { showSign: true, compact: true })}
+                </Text>
               </View>
 
               <View style={[styles.footerRow, isWideWeb && styles.footerRowWide]}>
@@ -212,6 +246,15 @@ const styles = StyleSheet.create({
   presetChipActive: {
     backgroundColor: Colors.orangeSoft,
     borderColor: `${Colors.orange}55`,
+  },
+  livePreview: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border1,
   },
   footerRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xl },
   footerRowWide: { justifyContent: 'flex-end' },

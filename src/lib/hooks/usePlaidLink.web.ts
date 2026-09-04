@@ -15,5 +15,9 @@ export function usePlaidLink() {
     linkBank: unavailable,
     refreshAllPlaidItems: async () => {},
     unlinkPlaidItem: async () => {},
+    // Matches usePlaidLink.native.ts's shape (design-audit-round-4's
+    // update-mode re-auth) -- web never has a real degraded Plaid item to
+    // reconnect, so this is unreachable in practice, same as `linkBank`.
+    reauthenticate: unavailable,
   };
 }

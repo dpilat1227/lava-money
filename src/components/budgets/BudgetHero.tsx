@@ -87,14 +87,21 @@ export function BudgetHero({ progress }: { progress: BudgetProgress[] }) {
 
   return (
     <Card level="raised" style={{ gap: Spacing.lg }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.lg }}>
+      {/* Design-audit-round-4: "she expected to be able to click in to
+          'Left to Spend' since other components at top of tabs are
+          clickable" -- the only tap signifier here used to be a 13px `(i)`
+          icon next to a label, easy to miss next to a hero-sized number
+          that otherwise looks static. The whole row is one Pressable now,
+          same "this entire hero responds to a tap" convention as every
+          other hero-style card in the app. */}
+      <Pressable onPress={() => setShowInfo(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.lg }}>
         <View style={{ flex: 1 }}>
-          <Pressable onPress={() => setShowInfo(true)} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text variant="subtitle" color={heroLabelColor}>
               {heroLabel}
             </Text>
             <Icon name="info" size={13} color={Colors.text4} />
-          </Pressable>
+          </View>
           <Text variant="display" weight="bold" color={Colors.text1} style={{ marginTop: 4, fontSize: 40, letterSpacing: -0.5, fontVariant: ['tabular-nums'] }}>
             {formatCurrency(animatedHeroValue)}
           </Text>
@@ -114,7 +121,7 @@ export function BudgetHero({ progress }: { progress: BudgetProgress[] }) {
             </Text>
           </ProgressRing>
         )}
-      </View>
+      </Pressable>
 
       <View style={styles.goalDivider} />
 

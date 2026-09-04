@@ -41,9 +41,14 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Icon sf="chart.pie.fill" md="pie_chart" />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="trends">
-        <NativeTabs.Trigger.Label>Trends</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="chart.line.uptrend.xyaxis" md="trending_up" />
+      {/* IA restructure (design-audit-round-4): "Trends" retired -- its
+          content (spending-over-time chart, cash-flow trend) moved into
+          Budgets as supporting context; this slot is now the promoted
+          Recurring tab (was a pushed/modal screen, buried behind links --
+          "way easier to find" from review). Still five tabs either way. */}
+      <NativeTabs.Trigger name="recurring">
+        <NativeTabs.Trigger.Label>Recurring</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="arrow.triangle.2.circlepath" md="autorenew" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="settings">
