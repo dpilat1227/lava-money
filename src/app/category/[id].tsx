@@ -76,11 +76,14 @@ export default function CategoryDetailScreen() {
   // fetched, always including the current year even on a brand-new
   // install with zero months of real data yet (so the picker/label never
   // shows a blank year with nothing to decrement to).
-  const yearsAvailable = useMemo(() => {
-    const years = new Set(fullHistory.map(m => Number(m.key.slice(0, 4))));
-    years.add(currentYear);
-    return Array.from(years).sort((a, b) => a - b);
-  }, [fullHistory, currentYear]);
+  // Not useMemo -- React Compiler flagged the manual memoization here as
+  // unpreservable (currentYear derives from a fresh `Date` each render,
+  // which its analysis treats conservatively) and skipped optimizing the
+  // whole component over it. Cheap enough (a couple dozen items, at
+  // most) that computing it plainly every render costs nothing anyway.
+  const years = new Set(fullHistory.map(m => Number(m.key.slice(0, 4))));
+  years.add(currentYear);
+  const yearsAvailable = Array.from(years).sort((a, b) => a - b);
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const yearMonths = useMemo(() => fullHistory.filter(m => Number(m.key.slice(0, 4)) === selectedYear), [fullHistory, selectedYear]);
   const yearTotal = yearMonths.reduce((s, m) => s + m.total, 0);

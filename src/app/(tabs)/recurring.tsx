@@ -33,7 +33,7 @@ export default function RecurringScreen() {
     // everything else recurring. Making that rule visible beats adding a
     // second field just to answer a question this one sentence resolves.
     <Text variant="caption" color={Colors.text4}>
-      Detected automatically from your transaction history. "Subscriptions" are anything in your Subscriptions category; everything else recurring counts as a bill.
+      Detected automatically from your transaction history. &ldquo;Subscriptions&rdquo; are anything in your Subscriptions category; everything else recurring counts as a bill.
     </Text>
   );
 

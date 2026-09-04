@@ -191,13 +191,13 @@ function WhatThisMeansModal({ onClose }: { onClose: () => void }) {
             </View>
             <View style={{ gap: Spacing.md }}>
               <Text variant="body" color={Colors.text2}>
-                Every monthly limit you've set, added up, minus what's been spent in those categories so far this month.
+                Every monthly limit you&apos;ve set, added up, minus what&apos;s been spent in those categories so far this month.
               </Text>
               <Text variant="body" color={Colors.text2}>
-                If you've set a savings or debt-payoff goal below, its full monthly target counts as already spoken for from day one \u2014 same as a bill that hasn't posted yet still counts against what's left.
+                If you&apos;ve set a savings or debt-payoff goal below, its full monthly target counts as already spoken for from day one {'\u2014'} same as a bill that hasn&apos;t posted yet still counts against what&apos;s left.
               </Text>
               <Text variant="caption" color={Colors.text4}>
-                Categories without a limit \u2014 rent, anything you haven't budgeted for \u2014 still aren't counted here, even if you're already committed to spending them.
+                Categories without a limit {'\u2014'} rent, anything you haven&apos;t budgeted for {'\u2014'} still aren&apos;t counted here, even if you&apos;re already committed to spending them.
               </Text>
             </View>
           </Pressable>
