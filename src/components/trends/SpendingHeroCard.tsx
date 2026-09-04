@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -10,6 +11,7 @@ import { useCategorySpendTotals, useSpendByPeriod, type SpendGranularity } from 
 import { findCategory } from '@/lib/mock/categories';
 import { buildSampleSpendByPeriod, SAMPLE_CATEGORY_TOTALS } from '@/lib/mock/sampleChartData';
 import { useFinance } from '@/lib/store/FinanceContext';
+import type { Category } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils/currency';
 
 const DONUT_RANGE_OPTIONS = [
@@ -41,6 +43,7 @@ type Tab = 'time' | 'category';
  * mobile Trends and `DesktopTrends` so both platforms move together.
  */
 export function SpendingHeroCard({ chartHeight = 130 }: { chartHeight?: number }) {
+  const router = useRouter();
   const { categories } = useFinance();
   const [tab, setTab] = useState<Tab>('time');
   const [months, setMonths] = useState<1 | 3 | 6>(1);
@@ -113,7 +116,7 @@ export function SpendingHeroCard({ chartHeight = 130 }: { chartHeight?: number }
                   onPress={() => handleGranularityChange(opt.value)}
                   style={[styles.rangeChip, granularity === opt.value && styles.rangeChipActive]}
                 >
-                  <Text variant="micro" color={granularity === opt.value ? Colors.orange : Colors.text4} weight="semibold">
+                  <Text variant="micro" color={granularity === opt.value ? Colors.text1 : Colors.text4} weight="semibold">
                     {opt.label}
                   </Text>
                 </Pressable>
@@ -152,8 +155,14 @@ export function SpendingHeroCard({ chartHeight = 130 }: { chartHeight?: number }
                     <Text variant="caption" weight="medium" color={category.color} style={{ flex: 1 }} numberOfLines={1}>
                       {category.name}
                     </Text>
+                    {/* Design-audit-round-3 fix: `compact: true` only kicks
+                        in above $1000 ("$1.6k"), leaving everything smaller
+                        at full precision ("$792.37") in the same 6-row
+                        list -- two formats side by side read as a bug.
+                        This list is short enough that full precision
+                        everywhere costs nothing and reads consistently. */}
                     <Text variant="caption" weight="semibold" style={{ fontVariant: ['tabular-nums'] }}>
-                      {formatCurrency(c.total, { compact: true })}
+                      {formatCurrency(c.total)}
                     </Text>
                   </View>
                 );
@@ -174,7 +183,7 @@ export function SpendingHeroCard({ chartHeight = 130 }: { chartHeight?: number }
                   onPress={() => setMonths(opt.months)}
                   style={[styles.rangeChip, months === opt.months && styles.rangeChipActive]}
                 >
-                  <Text variant="micro" color={months === opt.months ? Colors.orange : Colors.text4} weight="semibold">
+                  <Text variant="micro" color={months === opt.months ? Colors.text1 : Colors.text4} weight="semibold">
                     {opt.label}
                   </Text>
                 </Pressable>
@@ -198,11 +207,28 @@ export function SpendingHeroCard({ chartHeight = 130 }: { chartHeight?: number }
               </Text>
             )}
           </View>
+          {/* Design-audit-round-3: the Robinhood asset-allocation bar (a
+              single chunky segmented strip, width-per-holding proportional
+              to share of the whole) is the one visualization from that
+              reference that actually fits something here -- categories are
+              mutually-exclusive parts of one whole, the exact shape that
+              bar answers well. Doesn't replace the ranked list below (that
+              still states the actual numbers this bar can't), just gives
+              an at-a-glance proportion read before the itemized detail. */}
+          <View style={{ marginTop: Spacing.lg }}>
+            <CategorySegmentedBar items={categoryTotals} categories={categories} total={categoryGrandTotal} />
+          </View>
+
           {/* No limit here either -- this *is* the dedicated "every
               category" view (Dashboard's teaser links here), so capping it
               would truncate the one screen whose whole job is to not. */}
-          <View style={{ marginTop: Spacing.lg }}>
-            <CategoryRankedList items={categoryTotals} categories={categories} periodTotal={categoryGrandTotal} />
+          <View style={{ marginTop: Spacing.xl }}>
+            <CategoryRankedList
+              items={categoryTotals}
+              categories={categories}
+              periodTotal={categoryGrandTotal}
+              onSelectCategory={categoryId => router.push(`/category/${categoryId}`)}
+            />
           </View>
         </View>
       )}
@@ -220,14 +246,42 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
   );
 }
 
+/** The Robinhood-inspired segmented proportion bar -- see the doc comment
+ * at its call site above for why this is the one visualization from that
+ * reference that actually earns a place here. Segments under ~1.5% of the
+ * total are skipped entirely rather than rendered as a sliver too thin to
+ * carry its own color meaningfully -- the ranked list below already
+ * accounts for every category exactly, this bar's job is just the
+ * at-a-glance shape. */
+function CategorySegmentedBar({ items, categories, total }: { items: { categoryId: string; total: number }[]; categories: Category[]; total: number }) {
+  if (total <= 0) return null;
+  return (
+    <View style={styles.segmentedBarTrack}>
+      {items.map(c => {
+        const share = c.total / total;
+        if (share < 0.015) return null;
+        const category = findCategory(categories, c.categoryId);
+        return <View key={c.categoryId} style={{ width: `${share * 100}%`, height: '100%', backgroundColor: category.color }} />;
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   tabRow: { flexDirection: 'row', gap: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border1 },
   tabButton: { paddingBottom: Spacing.sm, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabButtonActive: { borderBottomColor: Colors.orange },
   pickerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  rangePicker: { flexDirection: 'row', backgroundColor: Colors.surface2, borderRadius: Radius.pill, padding: 2 },
-  rangeChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.pill },
-  rangeChipActive: { backgroundColor: Colors.orangeSoft },
+  // Design-audit-round-3: padding bumped (10/4 -> 13/7) and the active
+  // state switched from a translucent `orangeSoft` fill to a solid
+  // `orangeCta` one with light text -- "the toggles don't look modern"
+  // was partly the theme-foundation orange-wash card making this track
+  // float oddly on a tinted background, but the chips themselves were
+  // also genuinely small/low-contrast at rest.
+  rangePicker: { flexDirection: 'row', backgroundColor: Colors.surface2, borderRadius: Radius.pill, padding: 3 },
+  rangeChip: { paddingHorizontal: 13, paddingVertical: 7, borderRadius: Radius.pill },
+  rangeChipActive: { backgroundColor: Colors.orangeCta },
   drillIn: { marginTop: Spacing.lg, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border1, gap: 2 },
   drillInLabel: { textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: Spacing.xs },
+  segmentedBarTrack: { flexDirection: 'row', height: 14, borderRadius: 7, overflow: 'hidden', backgroundColor: Colors.surface2 },
 });

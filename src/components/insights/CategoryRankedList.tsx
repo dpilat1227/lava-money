@@ -1,7 +1,7 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
-import { Amount, CategoryIcon, ProgressBar, Text } from '@/components/ui';
+import { Amount, CategoryIcon, Icon, ProgressBar, Text } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import { findCategory } from '@/lib/mock/categories';
 import type { Category } from '@/lib/types';
@@ -24,6 +24,7 @@ export function CategoryRankedList({
   limit,
   iconSize = 30,
   emptyLabel = 'No spending yet.',
+  onSelectCategory,
 }: {
   items: { categoryId: string; total: number }[];
   categories: Category[];
@@ -34,6 +35,12 @@ export function CategoryRankedList({
   limit?: number;
   iconSize?: number;
   emptyLabel?: string;
+  /** Design-audit-round-3: "I want users to be able to click into
+   * categories" -- optional so every caller of this shared list (Dashboard's
+   * teaser, Budgets' breakdown, Trends' "By category") can opt into
+   * navigating to the new category-detail screen without forcing it on a
+   * context where it wouldn't make sense. */
+  onSelectCategory?: (categoryId: string) => void;
 }) {
   const rows = limit ? items.slice(0, limit) : items;
   // `limit` is meant for callers that deliberately show a "top N" teaser
@@ -56,8 +63,12 @@ export function CategoryRankedList({
       {rows.map(c => {
         const category = findCategory(categories, c.categoryId);
         const share = periodTotal > 0 ? c.total / periodTotal : 0;
+        const RowWrapper = onSelectCategory ? Pressable : View;
+        const rowWrapperProps = onSelectCategory
+          ? { onPress: () => onSelectCategory(c.categoryId), style: ({ pressed }: { pressed: boolean }) => ({ opacity: pressed ? 0.7 : 1 }) }
+          : {};
         return (
-          <View key={c.categoryId}>
+          <RowWrapper key={c.categoryId} {...rowWrapperProps}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <CategoryIcon id={category.id} emoji={category.emoji} color={category.color} size={iconSize} />
               {/* Copilot-redesign pass: category-color-as-text, same
@@ -69,11 +80,16 @@ export function CategoryRankedList({
                 {category.name}
               </Text>
               <Amount amount={-c.total} variant="body" />
+              {onSelectCategory && (
+                <View style={{ marginLeft: 6 }}>
+                  <Icon name="chevronRight" size={12} color={Colors.text4} />
+                </View>
+              )}
             </View>
             <View style={{ marginTop: Spacing.sm }}>
               <ProgressBar pct={share} color={category.color} height={5} animate={false} />
             </View>
-          </View>
+          </RowWrapper>
         );
       })}
       {hidden.length > 0 && (

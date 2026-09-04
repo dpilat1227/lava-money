@@ -22,7 +22,9 @@ export function RecurringTeaserCard() {
 
   return (
     <Pressable onPress={() => router.push('/recurring')}>
-      <Card level="flat">
+      {/* Design-audit-round-3: secondary single-purpose card -- `resting`,
+          same reclassification as CashFlowCard. */}
+      <Card level="resting">
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text variant="subtitle" color={Colors.text2}>
             Recurring & subscriptions

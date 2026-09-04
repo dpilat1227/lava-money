@@ -1,8 +1,9 @@
+import { useRouter } from 'expo-router';
 import React from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Badge, Card, CategoryIcon, ProgressRing, SampleTag, Text } from '@/components/ui';
-import { Breakpoints, Colors, Spacing } from '@/constants/theme';
+import { Badge, Card, CategoryIcon, Icon, ProgressRing, SampleTag, Text } from '@/components/ui';
+import { Colors, Spacing } from '@/constants/theme';
 import { findCategory } from '@/lib/mock/categories';
 import { SAMPLE_RECURRING_ITEMS } from '@/lib/mock/sampleChartData';
 import { useFinance } from '@/lib/store/FinanceContext';
@@ -44,39 +45,35 @@ interface DisplayItem {
   cadence: string;
   dueLabel: string;
   flag: Flag;
+  /** Sort key -- ascending puts overdue (negative) first, then due-soon,
+   * then further-out upcoming charges, matching "sorted by upcoming
+   * payment date" (design-audit-round-3's steer, and Copilot's own actual
+   * default -- day-of-month ascending -- once you set aside their grid
+   * view, which you said you didn't like). */
+  daysUntilExpected: number;
+  /** Real series id for real items -- undefined for the sample/demo rows,
+   * which have nothing behind them to navigate to. */
+  seriesId?: string;
 }
 
 /**
- * Recurring's dedicated page, rebuilt Copilot-style: a ring hero answering
- * "how much of this month's recurring spend has already gone out the
- * door," then a card grid (icon, name, amount, cadence, a paid/due-soon/
- * overdue flag) instead of the flat list this replaces. A grid scans
- * faster than a list for "which of these ~15 things needs my attention"
- * because flags/colors sit in a fixed spot on every card instead of
- * sharing one line of text with the cadence, which is what made the old
- * list read as "cluttered" per the redesign brief.
- *
- * Deliberately never uses a truly-absolute "corner flag" overlay -- the
- * flag renders in the card's own header row instead. Copilot's overlays
- * (coaching tooltips, FAB) sitting *on top of* the content they describe
- * was one of the flaws this whole pass set out to avoid; a flag that could
- * clip over a long merchant name would be the same mistake in miniature.
+ * Recurring's dedicated page. Design-audit-round-3: converted from a
+ * card grid back to a single-column list -- "I actually don't like the
+ * way Copilot did it: the grid of squares doesn't feel intuitive... I do
+ * like the vertical list." Rows are now tappable into a dedicated
+ * recurring-item detail screen (recurring-item/[id].tsx), which the grid
+ * cards never were at all.
  */
 export function RecurringGrid({ insights }: { insights: RecurringInsights }) {
+  const router = useRouter();
   const { categories } = useFinance();
-  const { width } = useWindowDimensions();
-  // The dedicated /recurring page caps its own content width at 900px (see
-  // recurring.tsx), so this only needs two tiers -- mobile-width vs. the
-  // fixed web container -- not a third `xwide` tier that would never get
-  // a wider box to actually grow into.
-  const columns = width >= Breakpoints.wide ? 3 : 2;
 
   const isSample = insights.items.length === 0;
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   const displayItems: DisplayItem[] = isSample
-    ? SAMPLE_RECURRING_ITEMS.map(s => ({
+    ? SAMPLE_RECURRING_ITEMS.map((s, i) => ({
         key: s.id,
         merchantName: s.merchantName,
         categoryId: s.categoryId,
@@ -84,29 +81,34 @@ export function RecurringGrid({ insights }: { insights: RecurringInsights }) {
         cadence: s.cadenceLabel.split(' ')[0],
         dueLabel: s.dueLabel,
         flag: 'upcoming',
+        daysUntilExpected: i,
       }))
-    : insights.items.map(item => {
-        const paidThisMonth = item.series.lastSeenDate.slice(0, 7) === currentMonthKey;
-        const flag: Flag =
-          item.status === 'overdue'
-            ? 'overdue'
-            : item.status === 'late'
-              ? 'late'
-              : item.status === 'due_soon'
-                ? 'due_soon'
-                : paidThisMonth
-                  ? 'paid'
-                  : 'upcoming';
-        return {
-          key: item.series.id,
-          merchantName: item.series.merchantName,
-          categoryId: item.series.categoryId,
-          amount: item.monthlyEquivalent,
-          cadence: cadenceLabel(item.series.cadence),
-          dueLabel: flag === 'paid' ? `Charged ${formatShortDate(item.series.lastSeenDate)}` : relativeDue(item.daysUntilExpected),
-          flag,
-        };
-      });
+    : insights.items
+        .map(item => {
+          const paidThisMonth = item.series.lastSeenDate.slice(0, 7) === currentMonthKey;
+          const flag: Flag =
+            item.status === 'overdue'
+              ? 'overdue'
+              : item.status === 'late'
+                ? 'late'
+                : item.status === 'due_soon'
+                  ? 'due_soon'
+                  : paidThisMonth
+                    ? 'paid'
+                    : 'upcoming';
+          return {
+            key: item.series.id,
+            merchantName: item.series.merchantName,
+            categoryId: item.series.categoryId,
+            amount: item.monthlyEquivalent,
+            cadence: cadenceLabel(item.series.cadence),
+            dueLabel: flag === 'paid' ? `Charged ${formatShortDate(item.series.lastSeenDate)}` : relativeDue(item.daysUntilExpected),
+            flag,
+            daysUntilExpected: item.daysUntilExpected,
+            seriesId: item.series.id,
+          };
+        })
+        .sort((a, b) => a.daysUntilExpected - b.daysUntilExpected);
 
   const totalMonthly = isSample
     ? SAMPLE_RECURRING_ITEMS.reduce((s, i) => s + i.monthlyEquivalent, 0)
@@ -156,33 +158,40 @@ export function RecurringGrid({ insights }: { insights: RecurringInsights }) {
         </Text>
       )}
 
-      <View style={[styles.grid, { opacity: isSample ? 0.6 : 1 }]}>
-        {displayItems.map(item => {
+      <View style={{ opacity: isSample ? 0.6 : 1 }}>
+        {displayItems.map((item, i) => {
           const category = findCategory(categories, item.categoryId);
           const meta = FLAG_META[item.flag];
           return (
-            <View key={item.key} style={[styles.cell, { width: `${100 / columns}%` }]}>
-              <Card level="flat" style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <CategoryIcon id={category.id} emoji={category.emoji} color={category.color} size={32} />
-                  <Badge label={meta.label} color={meta.color} />
-                </View>
-                {/* Flaw-avoidance: Copilot's own recurring cards frequently
-                    mid-word-truncate ("Car Insur...") at this card width.
-                    Wrapping to two lines instead of clipping to one keeps
-                    the name legible; the fixed minHeight keeps amounts
-                    aligned across a row even when names wrap differently. */}
-                <Text variant="body" weight="semibold" numberOfLines={2} style={styles.cardName}>
+            <Pressable
+              key={item.key}
+              disabled={!item.seriesId}
+              onPress={() => item.seriesId && router.push(`/recurring-item/${item.seriesId}`)}
+              style={({ pressed }) => [styles.row, i > 0 && styles.rowDivider, pressed && item.seriesId && { opacity: 0.7 }]}
+            >
+              <CategoryIcon id={category.id} emoji={category.emoji} color={category.color} size={34} />
+              <View style={{ flex: 1, marginLeft: Spacing.md }}>
+                <Text variant="body" weight="medium" numberOfLines={1}>
                   {item.merchantName}
                 </Text>
-                <Text variant="title" weight="bold" color={Colors.text1} style={{ marginTop: 2, fontVariant: ['tabular-nums'] }}>
-                  {formatCurrency(item.amount, { compact: true })}
-                </Text>
-                <Text variant="micro" color={Colors.text4} style={{ marginTop: 6 }} numberOfLines={1}>
+                <Text variant="micro" color={Colors.text4} style={{ marginTop: 2 }} numberOfLines={1}>
                   {item.cadence} · {item.dueLabel}
                 </Text>
-              </Card>
-            </View>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text variant="body" weight="semibold" style={{ fontVariant: ['tabular-nums'] }}>
+                  {formatCurrency(item.amount, { compact: true })}
+                </Text>
+                <View style={{ marginTop: 4 }}>
+                  <Badge label={meta.label} color={meta.color} />
+                </View>
+              </View>
+              {item.seriesId && (
+                <View style={{ marginLeft: Spacing.sm }}>
+                  <Icon name="chevronRight" size={13} color={Colors.text4} />
+                </View>
+              )}
+            </Pressable>
           );
         })}
       </View>
@@ -203,9 +212,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(248,113,113,0.25)',
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -Spacing.sm },
-  cell: { padding: Spacing.sm },
-  card: { padding: Spacing.lg, gap: 0 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardName: { marginTop: Spacing.md, minHeight: 38 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+  },
+  rowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border1,
+  },
 });

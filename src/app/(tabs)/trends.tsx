@@ -7,9 +7,11 @@ import { SpendingHeroCard } from '@/components/trends/SpendingHeroCard';
 import { Atmosphere, ScreenHeader } from '@/components/ui';
 import { DesktopTrends } from '@/components/web/DesktopTrends';
 import { Breakpoints, Colors, Spacing } from '@/constants/theme';
+import { useTabBarBottomPadding } from '@/lib/hooks/useTabBarBottomPadding';
 
 export default function TrendsScreen() {
   const { width } = useWindowDimensions();
+  const tabBarBottomPadding = useTabBarBottomPadding();
 
   if (Platform.OS === 'web' && width >= Breakpoints.wide) {
     return <DesktopTrends />;
@@ -18,7 +20,7 @@ export default function TrendsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <Atmosphere />
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: tabBarBottomPadding }}>
         <ScreenHeader title="Trends" />
 
         {/* More vertical breathing room than the old two-stacked-cards

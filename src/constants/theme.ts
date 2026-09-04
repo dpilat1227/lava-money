@@ -13,15 +13,39 @@ export const Colors = {
   surface2: '#262220',
   surface3: '#322d27',
   surface4: '#403a32',
-  /** Card fill — translucent so it reads as "lifted," not pasted on top. */
+  /** Card fill — translucent so it reads as "lifted," not pasted on top.
+   * Used only for momentary press feedback (`TransactionRow`'s
+   * `rowPressed`) -- NOT a general-purpose card background; see
+   * `surfaceSubtle` for that. */
   surfaceCard: 'rgba(255,130,60,0.05)',
-  /** One step up from surfaceCard — for the single hero surface on a screen
-   * (net-worth card, an in-focus row) that should read as more present than
-   * its neighbors without becoming a different component. See `Elevation`.
-   * Bumped from 0.09 -> 0.16 in the Copilot-redesign pass -- paired with a
-   * blur layer (see Card.tsx's RaisedBackdrop) this was reading as barely
-   * more present than flat/resting once those moved to solid fills. */
-  surfaceCardRaised: 'rgba(255,140,60,0.16)',
+  /** Design-audit-round-3 fix: this used to be `rgba(255,140,60,0.16)` --
+   * translucent *orange* -- which is exactly the "gross dull orange fill"
+   * flagged on Budgets/Trends/Recurring's hero cards, and a direct
+   * contradiction of `AccentUsage`'s own rule below ("not allowed: default/
+   * resting states of things that aren't selected or primary"). A hero
+   * card being the most important thing on screen doesn't make it
+   * "selected" -- orange was leaking in as ambient color instead of a
+   * deliberate accent. Neutral warm-dark instead: paired with the same
+   * blur layer (see Card.tsx's RaisedBackdrop) this still reads as a
+   * distinct, premium "frosted glass" surface -- just tinted dark, not
+   * orange. Orange stays reserved for what's *inside* these cards (a ring
+   * stroke, a hairline, the hero number itself when status-relevant). */
+  surfaceCardRaised: 'rgba(19,16,14,0.6)',
+  /** Design-audit-round-3: the tier below raised (`Elevation.resting`) used
+   * to be a solid `surface2` fill -- fine as one card among cards, but
+   * once every settings row, accounts list, and secondary info card
+   * *also* used the identical solid-grey treatment, the whole app read as
+   * "flat grey slabs stacked on top of each other" with nothing to tell a
+   * hero moment from a settings row. List-shaped groupings (Settings'
+   * sections, Home's Accounts/Upcoming, BudgetList) now skip a card
+   * background entirely -- rows sit directly on `bg`, separated by
+   * `border1` hairlines, the same treatment Activity's transaction list
+   * already had. This is what's left for the handful of *secondary*
+   * single-purpose cards that aren't a list and aren't the one hero on
+   * screen (`SpendingCard`, `CashFlowCard`, `RecurringTeaserCard`,
+   * `NeedsAttentionCard`, `GetStartedNudge`) -- present enough to read as
+   * "grouped," not present enough to compete with the actual hero card. */
+  surfaceSubtle: 'rgba(255,241,225,0.035)',
   /** Sheet/modal fill — deliberately closer to opaque than any card tint,
    * since sheets sit *above* the whole screen, not beside other cards. Used
    * as the fallback fill when `expo-glass-effect`'s native material isn't
@@ -207,15 +231,29 @@ export const Shadow = {
  * screen could out-rank anything else. Three levels, not five: more than
  * three and the eye stops being able to tell them apart anyway.
  *
- * - `flat` — multi-row list *containers* (an accounts list, a settings
- *   section): the rows inside are the content; the container is just a
- *   boundary, not a thing competing for attention itself. No shadow — a
- *   drop shadow under something that's mostly hairlines-between-rows reads
- *   as a box floating above the screen, and five of those stacked down one
- *   scroll view is what "boxy" actually means in practice.
- * - `resting` — the default. Single-purpose cards (one chip, one banner).
+ * - `flat` — kept for call sites that still want a solid, opaque grouping
+ *   box (e.g. the desktop-web dashboard's grid cards, out of scope for the
+ *   design-audit-round-3 pass below). Mobile list *containers* (an
+ *   accounts list, a settings section) no longer use this at all -- see
+ *   `resting`'s doc for why.
+ * - `resting` — the default. Single-purpose *cards* (one stat pair, one
+ *   banner) that aren't a list and aren't the hero -- `SpendingCard`,
+ *   `CashFlowCard`, `RecurringTeaserCard`, `NeedsAttentionCard`,
+ *   `GetStartedNudge`. Design-audit-round-3: switched from a solid
+ *   `surface2` fill to `surfaceSubtle` (barely-there) with no shadow -- a
+ *   drop shadow under a near-transparent fill read as a box floating above
+ *   the screen for no reason. Multi-row list *containers* (an accounts
+ *   list, a settings section, `BudgetList`) don't use a `Card` at all
+ *   anymore: the rows are the content, separated by `border1` hairlines
+ *   directly on `bg`, the same treatment Activity's transaction list
+ *   already had -- a container that's mostly hairlines-between-rows read
+ *   as "boxy" the moment more than one of them was stacked down a screen,
+ *   and there was no reason for every single one of them to also compete
+ *   for attention as its own surface.
  * - `raised` — the one hero surface per screen that should read as more
- *   present (net worth, an expanded row, a selected chip).
+ *   present (net worth, a budget total, a spend total). Design-audit-
+ *   round-3: the tint went from translucent orange to neutral dark -- see
+ *   `surfaceCardRaised`'s doc in `Colors` above.
  * - `glass` — sheets, modals, popovers: things floating *above* the screen
  *   rather than laid out within it. Pair with `GlassSurface` so iOS gets a
  *   real Liquid Glass material and Android/web get this fill as a fallback.
@@ -236,10 +274,9 @@ export const Elevation = {
     borderWidth: 1,
   },
   resting: {
-    backgroundColor: Colors.surface2,
+    backgroundColor: Colors.surfaceSubtle,
     borderColor: Colors.border1,
     borderWidth: 1,
-    ...Shadow.sm,
   },
   raised: {
     backgroundColor: Colors.surfaceCardRaised,

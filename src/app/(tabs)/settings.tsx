@@ -2,9 +2,10 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 
-import { Atmosphere, CategoryIcon, Card, GlassSurface, Icon, IconBadge, InstitutionAvatar, ScreenHeader, Text, type IconName } from '@/components/ui';
+import { Atmosphere, CategoryIcon, GlassSurface, Icon, IconBadge, InstitutionAvatar, ScreenHeader, Text, type IconName } from '@/components/ui';
 import { Breakpoints, ChartPalette, Colors, Radius, Spacing } from '@/constants/theme';
 import { useEscapeToClose } from '@/lib/hooks/useEscapeToClose';
+import { useTabBarBottomPadding } from '@/lib/hooks/useTabBarBottomPadding';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { formatCurrency } from '@/lib/utils/currency';
 import { exportAllDataAsJson, exportTransactionsAsCsv } from '@/lib/utils/export';
@@ -30,6 +31,7 @@ export default function SettingsScreen() {
   const [exporting, setExporting] = useState<'json' | 'csv' | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [showDataInfo, setShowDataInfo] = useState(false);
+  const tabBarBottomPadding = useTabBarBottomPadding();
 
   const linkedAccounts = accounts.filter(a => a.source === 'linked');
   const manualAccounts = accounts.filter(a => a.source === 'manual');
@@ -67,10 +69,16 @@ export default function SettingsScreen() {
   return (
     <View style={styles.root}>
       <Atmosphere />
-      <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
+      <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: tabBarBottomPadding }}>
       <ScreenHeader title="Settings" />
 
-      <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.lg }}>
+      {/* Design-audit-round-3: was Spacing.lg (16) -- fine when every
+          section had its own grey card boundary to lean on, but once
+          those went away (see the section-by-section notes below), 16px
+          alone wasn't enough to keep e.g. "Manually tracked"'s last row
+          from reading as part of "Add account" right under it. Sections
+          now rely on real whitespace, not a box, to read as distinct. */}
+      <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.xxl }}>
         {linkedAccounts.length > 0 && (
           <View>
             <View style={styles.sectionLabelRow}>
@@ -81,20 +89,25 @@ export default function SettingsScreen() {
                 </Text>
               </Pressable>
             </View>
-            <Card level="flat" style={{ gap: Spacing.sm }}>
+            {/* Design-audit-round-3: was a `Card level="flat"` -- a solid grey
+                slab around a list whose rows are the actual content. Rows
+                sit directly on `bg` now, hairline-divided, same treatment
+                Home's own Accounts list and Activity's transaction list
+                already use. */}
+            <View style={{ gap: Spacing.lg }}>
               {institutions
                 .filter(inst => linkedAccounts.some(a => a.institutionId === inst.id))
-                .map(inst => (
-                  <View key={inst.id}>
+                .map((inst, instIndex) => (
+                  <View key={inst.id} style={instIndex > 0 ? styles.institutionGroupDivider : undefined}>
                     <Text variant="caption" color={Colors.text3} style={{ marginBottom: 4 }}>
                       {inst.name}
                     </Text>
                     {linkedAccounts
                       .filter(a => a.institutionId === inst.id)
-                      .map(a => {
+                      .map((a, i) => {
                         const status = presentSyncStatus(a);
                         return (
-                          <Pressable key={a.id} onPress={() => router.push(`/account/${a.id}`)} style={styles.accountRow}>
+                          <Pressable key={a.id} onPress={() => router.push(`/account/${a.id}`)} style={[styles.accountRow, i > 0 && styles.accountRowDivider]}>
                             <InstitutionAvatar name={inst.name} color={inst.color} size={30} />
                             <View style={{ flex: 1, marginLeft: Spacing.sm }}>
                               <Text variant="body">{a.name}</Text>
@@ -113,16 +126,16 @@ export default function SettingsScreen() {
                       })}
                   </View>
                 ))}
-            </Card>
+            </View>
           </View>
         )}
 
         {manualAccounts.length > 0 && (
           <View>
             <SectionLabel text="Manually tracked" />
-            <Card level="flat" style={{ gap: Spacing.sm }}>
-              {manualAccounts.map(a => (
-                <Pressable key={a.id} onPress={() => router.push(`/account/${a.id}`)} style={styles.accountRow}>
+            <View>
+              {manualAccounts.map((a, i) => (
+                <Pressable key={a.id} onPress={() => router.push(`/account/${a.id}`)} style={[styles.accountRow, i > 0 && styles.accountRowDivider]}>
                   <IconBadge name="card" color={Colors.text3} size={30} />
                   <View style={{ flex: 1, marginLeft: Spacing.sm }}>
                     <Text variant="body">{a.name}</Text>
@@ -135,7 +148,7 @@ export default function SettingsScreen() {
                   </Text>
                 </Pressable>
               ))}
-            </Card>
+            </View>
           </View>
         )}
 
@@ -148,7 +161,7 @@ export default function SettingsScreen() {
 
         <View>
           <SectionLabel text="Data & privacy" />
-          <Card level="flat" style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
+          <View>
             {/* Was a static line -- the one sentence that's actually this
                 app's whole reason for existing deserved to be more than a
                 caption nobody taps, especially next to two rows that *are*
@@ -183,7 +196,7 @@ export default function SettingsScreen() {
               onPress={() => runExport('csv')}
               last
             />
-          </Card>
+          </View>
         </View>
 
         <View>
@@ -196,7 +209,7 @@ export default function SettingsScreen() {
               </Text>
             </Pressable>
           </View>
-          <Card level="flat" style={{ gap: Spacing.sm }}>
+          <View style={{ gap: Spacing.sm }}>
             <Text variant="micro" color={Colors.text4}>
               Custom categories show up everywhere the starter list does -- Activity, Budgets, and Trends -- and can be edited or removed anytime.
             </Text>
@@ -231,17 +244,17 @@ export default function SettingsScreen() {
                 </View>
               ))
             )}
-          </Card>
+          </View>
         </View>
 
         <View>
           <SectionLabel text="About" />
-          <Card level="flat" style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
+          <View>
             <InfoRow label="Version" value="0.2.0" />
             <InfoRow label="Appearance" value="Dark" />
             <InfoRow label="Bank connections" value={Platform.OS === 'web' ? 'Simulated demo data' : 'Real, via Plaid'} />
             <InfoRow label="Manual accounts" value="Real — yours to edit" last />
-          </Card>
+          </View>
         </View>
 
         <View>
@@ -539,6 +552,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: Spacing.sm,
+  },
+  accountRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border1,
+  },
+  institutionGroupDivider: {
+    marginTop: Spacing.xs,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border1,
   },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   linkButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.sm },

@@ -45,9 +45,12 @@ example
 .env*
 !.env.example
 
-# competitor reference screenshots (Copilot Money) -- internal design
-# research only, not ours to publish
+# competitor reference screenshots (Copilot Money, Robinhood) -- internal
+# design research only, not ours to publish. Also our own review
+# screenshots off personal devices/TestFlight builds.
 Copilot_screenshots/
+Copilot_Robinhood_Screenshots_Sep_3/
+LavaMoney_Sep_3_Screenshots/
 
 # contains an unredacted API key screenshot -- never commit this
 Lava_Money_Resend_API.pdf

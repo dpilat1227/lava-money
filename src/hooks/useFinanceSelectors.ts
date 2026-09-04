@@ -274,6 +274,36 @@ export function useSpendByPeriod(granularity: SpendGranularity, periods: number,
   }, [transactions, granularity, periods, endOffset]);
 }
 
+/**
+ * One category's monthly spend across `monthsBack` months, most recent
+ * last -- powers the category-detail screen's monthly bar chart. Reuses
+ * `useSpendByPeriod`'s existing month-bucketing/`byCategory` breakdown
+ * instead of re-deriving date buckets a second time; just narrows each
+ * month down to one category's slice of it.
+ */
+export function useCategoryMonthlyHistory(categoryId: string, monthsBack = 13): SpendPeriod[] {
+  const months = useSpendByPeriod('month', monthsBack);
+  return useMemo(
+    () =>
+      months.map(m => ({
+        ...m,
+        total: m.byCategory.find(c => c.categoryId === categoryId)?.total ?? 0,
+      })),
+    [months, categoryId]
+  );
+}
+
+/** One category's transactions, newest first -- the category-detail
+ * screen groups these by month itself (presentation concern, same as
+ * Activity grouping its own list by day) rather than this hook doing it. */
+export function useCategoryTransactions(categoryId: string): Transaction[] {
+  const { transactions } = useFinance();
+  return useMemo(
+    () => transactions.filter(t => t.categoryId === categoryId).sort((a, b) => (a.date < b.date ? 1 : -1)),
+    [transactions, categoryId]
+  );
+}
+
 /** Transactions sorted newest-first and grouped by date for a list view. */
 export function useGroupedTransactions(searchQuery = '', accountId?: string) {
   const { transactions } = useFinance();

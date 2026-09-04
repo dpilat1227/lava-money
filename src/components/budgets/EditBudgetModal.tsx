@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 
 import { Button, CategoryIcon, GlassSurface, ProgressBar, Text } from '@/components/ui';
 import { Breakpoints, Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -45,10 +45,17 @@ export function EditBudgetModal({
 
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <GlassSurface style={styles.modalCard}>
-          <Pressable onPress={e => e.stopPropagation()}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md }}>
+      {/* Design-audit-round-3 fix: the numeric keypad was covering
+          Cancel/Save entirely with no way to see them while typing --
+          this had no keyboard-avoidance at all. `behavior="padding"` on
+          iOS shrinks the flex:1 backdrop as the keyboard rises, which
+          re-centers the card (via the backdrop's own justifyContent)
+          above it instead of letting the keyboard just paint over it. */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose}>
+          <GlassSurface style={styles.modalCard}>
+            <Pressable onPress={e => e.stopPropagation()}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md }}>
               <CategoryIcon id={category.id} emoji={category.emoji} color={category.color} size={32} />
               <Text variant="title" color={category.color}>
                 {category.name}
@@ -100,7 +107,8 @@ export function EditBudgetModal({
             </View>
           </Pressable>
         </GlassSurface>
-      </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

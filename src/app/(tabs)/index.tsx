@@ -8,10 +8,11 @@ import { GetStartedNudge } from '@/components/home/GetStartedNudge';
 import { NeedsAttentionCard } from '@/components/home/NeedsAttentionCard';
 import { NetWorthHero } from '@/components/home/NetWorthHero';
 import { SpendingCard } from '@/components/home/SpendingCard';
-import { Amount, Atmosphere, Card, Icon, InstitutionAvatar, StaggerItem, Text } from '@/components/ui';
+import { Amount, Atmosphere, Icon, InstitutionAvatar, StaggerItem, Text } from '@/components/ui';
 import { DesktopDashboard } from '@/components/web/DesktopDashboard';
 import { Breakpoints, Colors, Spacing } from '@/constants/theme';
 import { useUpcomingRecurring, useNetWorthHistory, useNetWorthSummary } from '@/hooks/useFinanceSelectors';
+import { useTabBarBottomPadding } from '@/lib/hooks/useTabBarBottomPadding';
 import { getInstitution } from '@/lib/mock/institutions';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { isAssetAccount, type Account } from '@/lib/types';
@@ -28,6 +29,7 @@ const RANGE_OPTIONS = [
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tabBarBottomPadding = useTabBarBottomPadding();
   const { width } = useWindowDimensions();
   const { accounts, transactions, refreshAllLinked } = useFinance();
   const [refreshing, setRefreshing] = useState(false);
@@ -62,7 +64,7 @@ export default function HomeScreen() {
       <Atmosphere />
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: Spacing.xxxl }}
+        contentContainerStyle={{ paddingBottom: tabBarBottomPadding }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.orange} />}
       >
       {/* No header/greeting here on purpose -- Robinhood/Apple Card both
@@ -70,7 +72,11 @@ export default function HomeScreen() {
           that vertical space is worth more as the net-worth moment than as
           a "Good evening" label repeated on every visit. Settings already
           covers the one thing a header icon would have opened anyway. */}
-      <View style={{ paddingHorizontal: Spacing.lg, paddingTop: insets.top + Spacing.md, gap: Spacing.lg }}>
+      {/* Design-audit-round-3: insets.top + Spacing.md (12) read as
+          "too close to the top" for the hero moment on the screen --
+          bumped to Spacing.lg (16) for real breathing room below the
+          status bar/Dynamic Island. */}
+      <View style={{ paddingHorizontal: Spacing.lg, paddingTop: insets.top + Spacing.lg, gap: Spacing.lg }}>
         <NetWorthHero
           netWorth={summary.netWorth}
           change={summary.change}
@@ -78,8 +84,6 @@ export default function HomeScreen() {
           assets={summary.assets}
           liabilities={summary.liabilities}
           history={chartHistory}
-          accounts={accounts}
-          transactions={transactions}
           range={range}
           onRangeChange={setRange}
           rangeOptions={RANGE_OPTIONS}
@@ -91,7 +95,11 @@ export default function HomeScreen() {
 
         <View>
           <SectionTitle title="Accounts" />
-          <Card level="flat" style={{ marginTop: Spacing.sm, gap: 0, padding: 0, overflow: 'hidden' }}>
+          {/* Design-audit-round-3: was a `Card level="flat"` -- rows already
+              divide themselves (see AccountRow's accountRowDivider), so the
+              enclosing grey slab was pure visual weight with nothing left
+              for it to actually do. */}
+          <View style={{ marginTop: Spacing.sm }}>
             {assetAccounts.map((a, i) => (
               <StaggerItem key={a.id} index={i}>
                 <AccountRow account={a} balance={a.balance} first={i === 0} />
@@ -102,7 +110,7 @@ export default function HomeScreen() {
                 <AccountRow account={a} balance={-a.balance} first={assetAccounts.length === 0 && i === 0} />
               </StaggerItem>
             ))}
-          </Card>
+          </View>
           <Pressable onPress={() => router.push('/link-account')} style={styles.addAccountRow}>
             <Icon name="plusCircle" size={15} color={Colors.orange} />
             <Text variant="body" color={Colors.orange} weight="semibold">
@@ -121,7 +129,7 @@ export default function HomeScreen() {
                 </Text>
               </Pressable>
             </View>
-            <Card level="flat" style={{ marginTop: Spacing.sm, gap: Spacing.sm }}>
+            <View style={{ marginTop: Spacing.sm }}>
               {upcoming.map((r, i) => (
                 <StaggerItem key={r.id} index={i}>
                   <Pressable
@@ -145,7 +153,7 @@ export default function HomeScreen() {
                   </Pressable>
                 </StaggerItem>
               ))}
-            </Card>
+            </View>
           </View>
         )}
       </View>
@@ -163,12 +171,13 @@ function SectionTitle({ title }: { title: string }) {
 }
 
 /**
- * One shared Card per section (Accounts), rows divided internally --
- * matches Settings' and NeedsAttentionCard's list treatment. Was previously
- * a separate elevated `Card` *per account*, which for anyone with 3+
- * accounts read as a stack of identical boxes ("card soup") rather than one
- * coherent list -- Robinhood/Copilot both render list rows flat inside a
- * single container, reserving a full card boundary for one thing at a time.
+ * No enclosing Card at all -- rows sit directly on the page background,
+ * divided internally (see accountRowDivider below), matching Settings' and
+ * Activity's own list treatment (design-audit-round-3). Was previously a
+ * separate elevated `Card` *per account*, which for anyone with 3+ accounts
+ * read as a stack of identical boxes ("card soup") rather than one coherent
+ * list -- Robinhood/Copilot both render list rows flat, reserving a card
+ * boundary for one thing at a time, not a container around routine rows.
  */
 function AccountRow({ account, balance, first }: { account: Account; balance: number; first: boolean }) {
   const router = useRouter();

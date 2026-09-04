@@ -12,15 +12,21 @@ import { Atmosphere, ScreenHeader } from '@/components/ui';
 import { DesktopBudgets } from '@/components/web/DesktopBudgets';
 import { Breakpoints, Spacing } from '@/constants/theme';
 import { useBudgetProgress, useCurrentMonthSpendByCategory } from '@/hooks/useFinanceSelectors';
+import { useTabBarBottomPadding } from '@/lib/hooks/useTabBarBottomPadding';
 import { useFinance } from '@/lib/store/FinanceContext';
 import { computeSmartBudgets, SUGGESTED_DEFAULTS } from '@/lib/utils/budgetSetup';
 
 export default function BudgetsScreen() {
   const { width } = useWindowDimensions();
+  const tabBarBottomPadding = useTabBarBottomPadding();
   const { setBudget, categories, expenseCategories } = useFinance();
   const progress = useBudgetProgress();
   const spendByCategory = useCurrentMonthSpendByCategory();
   const [editing, setEditing] = useState<string | null>(null);
+  // Design-audit-round-3: session-local, not persisted -- "just added"
+  // only needs to hold for as long as someone's still looking at the
+  // screen where they added it. See BudgetList's `recentlyAddedIds` doc.
+  const [recentlyAddedIds, setRecentlyAddedIds] = useState<Set<string>>(new Set());
 
   const budgetedIds = new Set(progress.map(p => p.categoryId));
   const unbudgeted = expenseCategories.filter(c => !budgetedIds.has(c.id));
@@ -48,13 +54,13 @@ export default function BudgetsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: '#080706' }}>
       <Atmosphere />
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: tabBarBottomPadding }}>
         <ScreenHeader title="Budgets" subtitle="This month" />
 
         <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.lg }}>
           {progress.length === 0 ? <SmartSetupCard onSmartSetup={handleSmartSetup} /> : <BudgetHero progress={progress} />}
 
-          <BudgetList progress={progress} categories={categories} onEditCategory={setEditing} />
+          <BudgetList progress={progress} categories={categories} recentlyAddedIds={recentlyAddedIds} />
 
           <AddBudgetChips categories={unbudgeted} onSelect={setEditing} />
 
@@ -69,6 +75,13 @@ export default function BudgetsScreen() {
           currentSpent={progress.find(p => p.categoryId === editing)?.spent ?? 0}
           onClose={() => setEditing(null)}
           onSave={limit => {
+            // Only a genuinely new budget (wasn't in budgetedIds before this
+            // save) earns the "New" tag -- editing an existing category's
+            // limit shouldn't relabel a category that's been budgeted for
+            // months just because someone tapped it to adjust the number.
+            if (!budgetedIds.has(editing)) {
+              setRecentlyAddedIds(prev => new Set(prev).add(editing));
+            }
             setBudget(editing, limit);
             setEditing(null);
           }}

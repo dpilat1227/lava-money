@@ -2,7 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 
 import { CategoryRankedList } from '@/components/insights/CategoryRankedList';
-import { Card, Text } from '@/components/ui';
+import { Text } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import { useSpendByPeriod } from '@/hooks/useFinanceSelectors';
 import { useFinance } from '@/lib/store/FinanceContext';
@@ -29,7 +29,12 @@ export function BudgetBreakdownCard() {
   if (!period || period.total === 0) return null;
 
   return (
-    <Card level="flat">
+    // Design-audit-round-3: was a `Card level="flat"` -- this is a list
+    // with its own title/subtitle already serving as the section label
+    // (same job Settings' SectionLabel does), so the enclosing grey slab
+    // added nothing but visual weight identical to every other card on
+    // the screen. See the same note on BudgetList above.
+    <View>
       <Text variant="subtitle" color={Colors.text2}>
         Spending by category
       </Text>
@@ -45,6 +50,6 @@ export function BudgetBreakdownCard() {
             ones someone's added), never an actually-long list. */}
         <CategoryRankedList items={period.byCategory} categories={categories} periodTotal={period.total} />
       </View>
-    </Card>
+    </View>
   );
 }

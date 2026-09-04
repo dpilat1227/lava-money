@@ -1,4 +1,5 @@
 import { Link, useRouter } from 'expo-router';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useMemo, useState } from 'react';
@@ -8,6 +9,7 @@ import { Atmosphere, Button, EmptyState, Icon, SampleTag, ScreenHeader, Text } f
 import { TransactionRow } from '@/components/transactions/TransactionRow';
 import { Breakpoints, Colors, Radius, Spacing } from '@/constants/theme';
 import { useGroupedTransactions } from '@/hooks/useFinanceSelectors';
+import { useTabBarBottomPadding } from '@/lib/hooks/useTabBarBottomPadding';
 import { getInstitution } from '@/lib/mock/institutions';
 import { SAMPLE_TRANSACTIONS } from '@/lib/mock/sampleChartData';
 import { useFinance } from '@/lib/store/FinanceContext';
@@ -31,6 +33,7 @@ export default function TransactionsScreen() {
   // sits closer to the top, and content is narrower-inset, than Budgets"
   // inconsistency called out in review.
   const hPad = isWideWeb ? Spacing.xl : Spacing.lg;
+  const tabBarBottomPadding = useTabBarBottomPadding();
   const { accounts, categories, institutions, transactions, categorizeTransaction, deleteTransaction } = useFinance();
 
   const suggestions = useMemo(() => findCategorySuggestions(transactions), [transactions]);
@@ -110,7 +113,7 @@ export default function TransactionsScreen() {
       )}
 
       {trulyEmpty ? (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: Spacing.xxxl }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: tabBarBottomPadding }}>
           <EmptyState
             icon={<Icon name="receipt" size={24} color={Colors.text3} />}
             title="No transactions yet"
@@ -145,7 +148,7 @@ export default function TransactionsScreen() {
         <SectionList
           sections={sections}
           keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingHorizontal: hPad, paddingBottom: Spacing.xxxl }}
+          contentContainerStyle={{ paddingHorizontal: hPad, paddingBottom: tabBarBottomPadding }}
           stickySectionHeadersEnabled
           ListHeaderComponent={
             filter === 'all' && suggestions.length > 0 ? (
@@ -159,7 +162,18 @@ export default function TransactionsScreen() {
             ) : null
           }
           renderSectionHeader={({ section }) => (
+            // Design-audit-round-3 fix: this used a flat `Colors.bg` fill so
+            // the pinned/sticky header can occlude rows scrolling behind it
+            // -- but `<Atmosphere />` paints a diagonal gradient plus two
+            // soft radial glows across the *whole* screen behind the list,
+            // so a flat opaque swatch reads as a hard-edged "hole" in that
+            // ambient lighting wherever it happens to sit ("black
+            // rectangle bars" in review). A blur still occludes what's
+            // behind it enough to keep the header legible while pinned,
+            // but it *samples* the gradient/glow instead of replacing it
+            // with a flat color, so it blends instead of cutting a seam.
             <View style={styles.sectionHeaderWrap}>
+              <BlurView intensity={28} tint="dark" style={StyleSheet.absoluteFill} />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <Text variant="caption" weight="semibold" color={Colors.text3} style={styles.sectionHeader}>
                   {section.title}
@@ -359,7 +373,8 @@ const styles = StyleSheet.create({
   },
   reviewDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.orange },
   sectionHeaderWrap: {
-    backgroundColor: Colors.bg,
+    position: 'relative',
+    overflow: 'hidden',
   },
   sectionHeader: {
     paddingTop: Spacing.md,

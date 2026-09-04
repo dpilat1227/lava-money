@@ -51,9 +51,18 @@ export function SpendingCard() {
       : 'First month tracking spend here';
 
   return (
-    <Card level="resting" onPress={() => router.push('/trends')} style={{ gap: Spacing.md }}>
+    // Design-audit-round-3: full redesign, not a tweak -- "the flat grey
+    // component design is gross," "the bar chart takes up like 1/4 of the
+    // component," "the comparison text is so tiny and wordy." Chart height
+    // roughly doubled (84 -> 132, closer to Trends' own default) so it's
+    // an actual second focus of the card instead of a strip underneath the
+    // real content; the comparison line promoted from `micro` to `caption`
+    // with real spacing instead of sitting jammed under the headline.
+    // `level="resting"` now inherits the lighter `surfaceSubtle` fill from
+    // the theme-foundation pass -- no code change needed here for that.
+    <Card level="resting" onPress={() => router.push('/trends')} style={{ gap: Spacing.lg }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text variant="caption" color={Colors.text3}>
             {/* "So far," matching Recurring's own "Paid so far this month" --
                 without it, "$0.00" on day 2 of a new month reads as broken
@@ -63,7 +72,7 @@ export function SpendingCard() {
           <Text variant="title" weight="bold" style={{ marginTop: 2, fontVariant: ['tabular-nums'] }}>
             {formatCurrency(thisMonth, { compact: true })}
           </Text>
-          <Text variant="micro" color={delta > 0 ? Colors.amber : Colors.green} style={{ marginTop: 4 }}>
+          <Text variant="caption" weight="medium" color={delta > 0 ? Colors.amber : Colors.green} style={{ marginTop: 6 }}>
             {comparison}
           </Text>
         </View>
@@ -72,25 +81,27 @@ export function SpendingCard() {
         </View>
       </View>
 
-      {/* Design-audit pass: the headline above is deliberately month-to-date
-          (reads as "$0.00" for days into a fresh month), while this chart
-          plots the last 6 *complete* weeks regardless -- e.g. $600+ bars
-          sitting directly under a "$0.00" headline with nothing explaining
-          why. The date labels under each bar were the only existing hint
-          they're not the same question; this caption states it outright
-          instead of counting on someone to notice on a quick glance. */}
-      <Text variant="micro" weight="semibold" color={Colors.text4} style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-        Last {WEEKS_SHOWN} weeks
-      </Text>
+      <View>
+        {/* Design-audit pass: the headline above is deliberately month-to-date
+            (reads as "$0.00" for days into a fresh month), while this chart
+            plots the last 6 *complete* weeks regardless -- e.g. $600+ bars
+            sitting directly under a "$0.00" headline with nothing explaining
+            why. The date labels under each bar were the only existing hint
+            they're not the same question; this caption states it outright
+            instead of counting on someone to notice on a quick glance. */}
+        <Text variant="micro" weight="semibold" color={Colors.text4} style={{ textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: Spacing.sm }}>
+          Last {WEEKS_SHOWN} weeks
+        </Text>
 
-      <SpendCeilingChart
-        periods={weeks}
-        granularity="week"
-        monthlyCeiling={weeklyAverage}
-        ceilingIsPrescaled
-        ceilingLabel="Avg."
-        height={84}
-      />
+        <SpendCeilingChart
+          periods={weeks}
+          granularity="week"
+          monthlyCeiling={weeklyAverage}
+          ceilingIsPrescaled
+          ceilingLabel="Avg."
+          height={132}
+        />
+      </View>
     </Card>
   );
 }

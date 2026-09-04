@@ -56,7 +56,7 @@ export function DesktopBudgets({
           <View style={styles.mainCol}>
             <BudgetHero progress={progress} />
             <View style={{ marginTop: Spacing.lg }}>
-              <BudgetList progress={progress} categories={categories} onEditCategory={onEdit} />
+              <BudgetList progress={progress} categories={categories} />
             </View>
           </View>
           <View style={styles.sideCol}>

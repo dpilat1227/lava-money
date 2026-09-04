@@ -85,8 +85,6 @@ export function DesktopDashboard() {
         assets={summary.assets}
         liabilities={summary.liabilities}
         history={chartHistory}
-        accounts={accounts}
-        transactions={transactions}
         range={range}
         onRangeChange={setRange}
         rangeOptions={RANGE_OPTIONS}

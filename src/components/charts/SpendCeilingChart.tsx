@@ -10,6 +10,13 @@ import { buildSampleSpendByPeriod } from '@/lib/mock/sampleChartData';
 import { formatCurrency } from '@/lib/utils/currency';
 
 const DEFAULT_HEIGHT = 120;
+/** Reserved space above the bars for the floating value label + the
+ * reference line, whichever sits higher. Design-audit-round-3: bumped
+ * from 24 -> 32 -- 24 left the label and/or reference line with almost no
+ * breathing room above them on a period whose tallest bar was close to
+ * the reference line, which is part of what read as "touching the header
+ * above it." */
+const LABEL_HEADROOM = 32;
 /** Budgets don't carry history (we only know today's limit, not what it
  * was 3 months ago), so the ceiling line is one flat benchmark applied
  * retroactively across every bar -- "if this were your budget, here's which
@@ -46,16 +53,29 @@ interface Props {
   onSelectPeriod?: (period: SpendPeriod) => void;
   height?: number;
   sample?: boolean;
+  /** Design-audit-round-3: red/amber/green traffic-lighting only means
+   * something against a real budget -- both of today's callers
+   * (`ceilingIsPrescaled`) compare against a trailing *average* instead,
+   * where "over" is just "a bit more than usual," not a warning. Coloring
+   * that red/amber read as a false alarm ("why yellow and red, looks like
+   * something is wrong"). Default `'accent'`: every bar the same brand
+   * color, the reference line alone carries the "above/below usual"
+   * signal. `'status'` keeps the original red/amber/green behavior for a
+   * genuine budget-vs-limit context (the category-detail screen's own
+   * per-category budget line, which this chart's doc comment above
+   * originally anticipated). */
+  colorMode?: 'accent' | 'status';
 }
 
 /**
  * Copilot's own "Monthly spending" chart, adapted: a boundary line marks
- * a reference total, bars color themselves green/amber/red by whether
- * that period cleared it -- states "am I over or under" at a glance, which
- * the category-segmented stacked bars this replaces never did (a shape
- * only answers "what did I spend on," a color answers "how am I doing").
- * "What did I spend on" still has a home -- the ranked category list this
- * chart's callers already show below it on selection.
+ * a reference total, and in `colorMode="status"` bars color themselves
+ * green/amber/red by whether that period cleared it -- states "am I over
+ * or under" at a glance, which the category-segmented stacked bars this
+ * replaces never did (a shape only answers "what did I spend on," a color
+ * answers "how am I doing"). "What did I spend on" still has a home -- the
+ * ranked category list this chart's callers already show below it on
+ * selection.
  *
  * The reference line can mean one of two different things, and it matters
  * which: a chart scoped to a single category (this app has none today, but
@@ -82,6 +102,7 @@ export function SpendCeilingChart({
   onSelectPeriod,
   height = DEFAULT_HEIGHT,
   sample = false,
+  colorMode = 'accent',
 }: Props) {
   const plotPeriods = sample ? buildSampleSpendByPeriod(granularity, periods.length || 6) : periods;
 
@@ -97,7 +118,17 @@ export function SpendCeilingChart({
             : monthlyCeiling;
 
   const maxTotal = Math.max(...plotPeriods.map(p => p.total), ceiling, 1);
-  const ceilingRatio = ceiling > 0 ? Math.min(1, ceiling / maxTotal) : null;
+  // Capped at 0.82 (not 1) -- an uncapped ratio can sit flush against the
+  // very top of the chart when the reference line is close to the tallest
+  // bar, which is exactly what read as "a thick white bar touching the
+  // header/toggles above it" in review. Guarantees the line always has
+  // *some* headroom above it, regardless of how the data happens to fall.
+  const ceilingRatio = ceiling > 0 ? Math.min(0.82, ceiling / maxTotal) : null;
+  // Sqrt, not linear -- one outlier period (e.g. a single rent-day week)
+  // against a linear scale makes every other bar an near-invisible sliver
+  // next to it. Sqrt compresses the outlier and lifts the smaller-but-real
+  // bars enough to stay legible, without lying about which one is bigger.
+  const scaleHeight = (value: number) => (maxTotal > 0 ? Math.sqrt(Math.max(0, value)) / Math.sqrt(maxTotal) : 0);
 
   const hasSelection = selectedKey != null;
   const labeledKey = selectedKey ?? plotPeriods[plotPeriods.length - 1]?.key;
@@ -111,7 +142,7 @@ export function SpendCeilingChart({
       )}
       {/* Extra top headroom for the floating value label, same reasoning
           as the chart this replaces. */}
-      <View style={{ height: height + 24 }}>
+      <View style={{ height: height + LABEL_HEADROOM }}>
         {ceilingRatio != null && (
           // Was Colors.text3 at 0.55 opacity -- a near-invisible hairline
           // against saturated red/amber/green bars, which defeated the
@@ -124,7 +155,7 @@ export function SpendCeilingChart({
               position: 'absolute',
               left: 0,
               right: 0,
-              bottom: 24 + ceilingRatio * height,
+              bottom: LABEL_HEADROOM + ceilingRatio * height,
               height: 2,
               backgroundColor: Colors.text1,
               opacity: 0.85,
@@ -135,19 +166,23 @@ export function SpendCeilingChart({
           {plotPeriods.map(period => {
             const isSelected = selectedKey === period.key;
             const isLabeled = period.key === labeledKey;
-            const barHeight = Math.max(4, (period.total / maxTotal) * height);
+            const barHeight = Math.max(4, scaleHeight(period.total) * height);
             const dimmed = hasSelection && !isSelected;
             // Same near/over thresholds BudgetList/ProgressRing already use
             // for "how am I doing" color, applied here too instead of
-            // inventing a second convention for the same question.
+            // inventing a second convention for the same question --
+            // but only in `colorMode="status"`, a genuine budget-vs-limit
+            // context. The default `"accent"` mode (a trailing-average
+            // reference, not a real budget) stays one consistent color;
+            // see this component's doc comment and the `colorMode` prop.
             const barColor =
-              ceiling <= 0
-                ? Colors.orange
-                : period.total > ceiling
+              colorMode === 'status' && ceiling > 0
+                ? period.total > ceiling
                   ? Colors.red
                   : period.total >= ceiling * 0.85
                     ? Colors.amber
-                    : Colors.green;
+                    : Colors.green
+                : Colors.orange;
 
             return (
               <Pressable

@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
-import { Icon, IconBadge, Text } from '@/components/ui';
+import { Card, Icon, IconBadge, Text } from '@/components/ui';
 import { Colors, Spacing } from '@/constants/theme';
 import { useFinance } from '@/lib/store/FinanceContext';
 
@@ -14,6 +14,12 @@ import { useFinance } from '@/lib/store/FinanceContext';
  * as broken rather than "new." Same "here's exactly one thing to do next"
  * job as `NeedsAttentionCard`, reusing its row language (icon + title +
  * subtitle + chevron) so it doesn't introduce a fourth card style.
+ *
+ * Design-audit-round-3: this used to hand-roll a `Pressable` with its own
+ * inline `surface1` fill instead of using the shared `Card` -- harmless on
+ * its own, but it meant this one card wouldn't have picked up the
+ * `resting` retint above for free the next time that token changes. Now it
+ * does, like every other secondary card.
  */
 export function GetStartedNudge() {
   const router = useRouter();
@@ -22,22 +28,7 @@ export function GetStartedNudge() {
   if (!target) return null;
 
   return (
-    <Pressable
-      onPress={() => router.push(`/account/${target.id}`)}
-      style={({ pressed }) => [
-        {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: Spacing.md,
-          padding: Spacing.lg,
-          borderRadius: 16,
-          backgroundColor: Colors.surface1,
-          borderWidth: 1,
-          borderColor: Colors.border1,
-          opacity: pressed ? 0.8 : 1,
-        },
-      ]}
-    >
+    <Card level="resting" onPress={() => router.push(`/account/${target.id}`)} style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
       <IconBadge name="plusCircle" color={Colors.orange} size={38} />
       <View style={{ flex: 1 }}>
         <Text variant="body" weight="semibold">
@@ -48,6 +39,6 @@ export function GetStartedNudge() {
         </Text>
       </View>
       <Icon name="chevronRight" size={14} color={Colors.text4} />
-    </Pressable>
+    </Card>
   );
 }

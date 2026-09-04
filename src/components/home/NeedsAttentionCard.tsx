@@ -47,7 +47,9 @@ export function NeedsAttentionCard({ attentionCount, suggestionCount, onRefreshA
   if (items.length === 0) return null;
 
   return (
-    <Card level="flat" style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
+    // Design-audit-round-3: secondary single-purpose card -- `resting`,
+    // same reclassification as CashFlowCard/RecurringTeaserCard.
+    <Card level="resting" style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
       <View style={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.sm }}>
         <Text variant="micro" weight="semibold" color={Colors.text3} style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
           Needs a look
