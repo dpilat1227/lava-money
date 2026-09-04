@@ -239,12 +239,30 @@ export function generateBankData(institutionId: string, seed: number, options: G
     { merchants: PERSONAL_CARE_MERCHANTS, categoryId: 'personal_care', perMonth: [0, 2], amount: [20, 120] },
   ];
 
-  for (let m = 0; m < MONTHS_BACK; m++) {
+  // Design-audit-round-4: this loop used to stop at `m < MONTHS_BACK`,
+  // which walks rangeStart..rangeStart+5 -- six full months, and by
+  // construction *never* the current one (rangeStart+6 == this month's
+  // start). Every category's "spent this month" was a guaranteed $0.00
+  // on a fresh install, on any day of any month, not a data-sparsity
+  // edge case -- see the "Yearly metrics" screenshots this fixes. Fixed
+  // by walking one extra, *partial* month, scaled to how many days have
+  // actually elapsed so day 2 of a new install doesn't get a full
+  // month's Groceries crammed into 48 hours.
+  for (let m = 0; m <= MONTHS_BACK; m++) {
     const monthStart = addMonths(rangeStart, m);
+    const isCurrentMonth = m === MONTHS_BACK;
+    // Floors at 1 so day one still rolls *some* chance of activity
+    // instead of a guaranteed zero; caps at 28 (this loop's existing
+    // day-of-month ceiling below) rather than the calendar's real
+    // days-in-month, which is one line simpler and never matters --
+    // nothing here depends on the extra 0-3 days a longer month has.
+    const elapsedDays = isCurrentMonth ? Math.max(1, Math.min(28, new Date().getDate())) : 28;
+    const dayCeiling = elapsedDays - 1;
     for (const group of discretionary) {
-      const count = randInt(rng, group.perMonth[0], group.perMonth[1]);
+      const fullCount = randInt(rng, group.perMonth[0], group.perMonth[1]);
+      const count = isCurrentMonth ? Math.round(fullCount * (elapsedDays / 28)) : fullCount;
       for (let i = 0; i < count; i++) {
-        const day = randInt(rng, 0, 27);
+        const day = randInt(rng, 0, dayCeiling);
         transactions.push({
           id: nextTxId(),
           accountId: spendAccountId,
@@ -257,45 +275,52 @@ export function generateBankData(institutionId: string, seed: number, options: G
       }
     }
 
-    // Rare bigger one-offs.
-    if (rng() < 0.35) {
+    // Rare bigger one-offs -- each roll's odds scale down with elapsed
+    // days too (a 35%-per-month chance is really "35% over ~28 days";
+    // three days in, it should read as roughly 3/28 of that).
+    const scaledOdds = (monthlyOdds: number) => (isCurrentMonth ? monthlyOdds * (elapsedDays / 28) : monthlyOdds);
+    if (rng() < scaledOdds(0.35)) {
       transactions.push({
         id: nextTxId(),
         accountId: spendAccountId,
-        date: isoDate(addDays(monthStart, randInt(rng, 0, 27))),
+        date: isoDate(addDays(monthStart, randInt(rng, 0, dayCeiling))),
         merchantName: pick(rng, HEALTH_ONEOFF_MERCHANTS),
         rawDescription: 'CARD PURCHASE',
         amount: -randFloat(rng, 20, 280),
         categoryId: 'health',
       });
     }
-    if (rng() < 0.22) {
+    if (rng() < scaledOdds(0.22)) {
       transactions.push({
         id: nextTxId(),
         accountId: spendAccountId,
-        date: isoDate(addDays(monthStart, randInt(rng, 0, 27))),
+        date: isoDate(addDays(monthStart, randInt(rng, 0, dayCeiling))),
         merchantName: pick(rng, TRAVEL_MERCHANTS),
         rawDescription: 'CARD PURCHASE',
         amount: -randFloat(rng, 180, 1200),
         categoryId: 'travel',
       });
     }
-    if (rng() < 0.18) {
+    if (rng() < scaledOdds(0.18)) {
       transactions.push({
         id: nextTxId(),
         accountId: checking.id,
-        date: isoDate(addDays(monthStart, randInt(rng, 0, 27))),
+        date: isoDate(addDays(monthStart, randInt(rng, 0, dayCeiling))),
         merchantName: rng() < 0.5 ? 'Client Payment' : 'Year-End Bonus',
         rawDescription: 'DEPOSIT',
         amount: randFloat(rng, 150, 900),
         categoryId: 'income',
       });
     }
-    if (credit && rng() < 0.15) {
+    // Lands on day 25-28 specifically (a billing-cycle-end charge) --
+    // for the current partial month, only include it once the month has
+    // actually reached that far, rather than shifting it earlier and
+    // having a credit card charge interest before its statement date.
+    if (credit && rng() < 0.15 && (!isCurrentMonth || elapsedDays >= 26)) {
       transactions.push({
         id: nextTxId(),
         accountId: credit.id,
-        date: isoDate(addDays(monthStart, randInt(rng, 25, 28))),
+        date: isoDate(addDays(monthStart, randInt(rng, 25, isCurrentMonth ? Math.min(28, dayCeiling) : 28))),
         merchantName: 'Interest Charge',
         rawDescription: 'INTEREST CHARGE',
         amount: -randFloat(rng, 8, 45),

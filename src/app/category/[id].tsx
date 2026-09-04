@@ -46,7 +46,18 @@ export default function CategoryDetailScreen() {
   const budget = budgets.find(b => b.categoryId === id);
   const spendByCategory = useCurrentMonthSpendByCategory();
   const monthlySpend = spendByCategory.get(id ?? '') ?? 0;
-  const history = useCategoryMonthlyHistory(id ?? '', 13);
+  // Design-audit-round-4: fetches 25 months (was 13) so the year-picker
+  // below has up to two full prior years to switch between once there's
+  // real history to show -- today's mock data only backfills ~6-7 months,
+  // so most of that range is legitimately empty, which is fine; this is
+  // sized for where the data grows *to*, not just what a fresh demo has
+  // right now. The bar chart itself still only plots the trailing 13 (see
+  // `chartHistory` below) -- its job is "recent trend," not "this
+  // specific calendar year," and 25 bars of month-only labels (no year
+  // suffix) would start colliding ("Sep" appearing three times) if it
+  // plotted the whole fetched range.
+  const fullHistory = useCategoryMonthlyHistory(id ?? '', 25);
+  const chartHistory = useMemo(() => fullHistory.slice(-13), [fullHistory]);
   const categoryTransactions = useCategoryTransactions(id ?? '');
   // Budgets progress isn't otherwise needed here, but EditBudgetModal wants
   // the exact same "currentSpent" the Budgets screen would've passed it --
@@ -60,10 +71,26 @@ export default function CategoryDetailScreen() {
 
   const now = new Date();
   const currentYear = now.getFullYear();
-  const yearMonths = useMemo(() => history.filter(m => Number(m.key.slice(0, 4)) === currentYear), [history, currentYear]);
+  // Design-audit-round-4: "a toggle option to select different years
+  // would be nice" -- years present in whatever history actually got
+  // fetched, always including the current year even on a brand-new
+  // install with zero months of real data yet (so the picker/label never
+  // shows a blank year with nothing to decrement to).
+  const yearsAvailable = useMemo(() => {
+    const years = new Set(fullHistory.map(m => Number(m.key.slice(0, 4))));
+    years.add(currentYear);
+    return Array.from(years).sort((a, b) => a - b);
+  }, [fullHistory, currentYear]);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const yearMonths = useMemo(() => fullHistory.filter(m => Number(m.key.slice(0, 4)) === selectedYear), [fullHistory, selectedYear]);
   const yearTotal = yearMonths.reduce((s, m) => s + m.total, 0);
-  const monthsElapsedThisYear = now.getMonth() + 1;
+  // A fully-past year averages over all 12 months; the current year only
+  // over however many have actually elapsed -- averaging January-through-
+  // now spend by 12 would understate a still-in-progress year.
+  const monthsElapsedThisYear = selectedYear === currentYear ? now.getMonth() + 1 : 12;
   const yearAverage = monthsElapsedThisYear > 0 ? yearTotal / monthsElapsedThisYear : 0;
+  const canGoEarlierYear = selectedYear > yearsAvailable[0];
+  const canGoLaterYear = selectedYear < currentYear;
 
   const recurringInCategory = recurringSeries.filter(s => s.categoryId === id);
 
@@ -106,7 +133,7 @@ export default function CategoryDetailScreen() {
 
       <View style={{ marginTop: Spacing.xl }}>
         <SpendCeilingChart
-          periods={history}
+          periods={chartHistory}
           granularity="month"
           monthlyCeiling={hasBudget ? budget!.monthlyLimit : 0}
           ceilingLabel="Budget"
@@ -122,22 +149,37 @@ export default function CategoryDetailScreen() {
         </Text>
       </Pressable>
 
-      <SectionLabel text="Yearly metrics" trailing={String(currentYear)} />
+      <View style={styles.yearlyMetricsHeader}>
+        <Text variant="title" weight="semibold" color={Colors.text1}>
+          Yearly metrics
+        </Text>
+        <View style={styles.yearPicker}>
+          <Pressable onPress={() => setSelectedYear(y => y - 1)} disabled={!canGoEarlierYear} hitSlop={8}>
+            <Icon name="chevronLeft" size={14} color={canGoEarlierYear ? Colors.text2 : Colors.text4} />
+          </Pressable>
+          <Text variant="body" weight="semibold" color={Colors.text2} style={{ minWidth: 40, textAlign: 'center', fontVariant: ['tabular-nums'] }}>
+            {selectedYear}
+          </Text>
+          <Pressable onPress={() => setSelectedYear(y => y + 1)} disabled={!canGoLaterYear} hitSlop={8}>
+            <Icon name="chevronRight" size={14} color={canGoLaterYear ? Colors.text2 : Colors.text4} />
+          </Pressable>
+        </View>
+      </View>
       <View style={styles.metricsRow}>
         <View style={styles.metricTile}>
-          <Text variant="micro" color={Colors.text4}>
-            Total spent in {currentYear}
+          <Text variant="caption" color={Colors.text3}>
+            Total spent in {selectedYear}
           </Text>
           <Text variant="subtitle" weight="semibold" style={{ marginTop: 2, fontVariant: ['tabular-nums'] }}>
-            {formatCurrency(yearTotal, { compact: true })}
+            {formatAggregate(yearTotal)}
           </Text>
         </View>
         <View style={styles.metricTile}>
-          <Text variant="micro" color={Colors.text4}>
+          <Text variant="caption" color={Colors.text3}>
             Average per month
           </Text>
           <Text variant="subtitle" weight="semibold" style={{ marginTop: 2, fontVariant: ['tabular-nums'] }}>
-            {formatCurrency(yearAverage, { compact: true })}
+            {formatAggregate(yearAverage)}
           </Text>
         </View>
       </View>
@@ -233,7 +275,13 @@ export default function CategoryDetailScreen() {
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <Atmosphere />
       <View style={styles.header}>
-        <Text variant="caption" color={Colors.text4} style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {/* Design-audit-round-4: this was the same size/weight/case as
+            "Close" on the opposite side -- "I thought I could click
+            'Category' since it seems identical to 'Close'" in review.
+            It's wayfinding, not a control -- lower contrast and no
+            letter-spacing/case treatment that reads as button-like now
+            separates "this is a label" from "this is the dismiss action." */}
+        <Text variant="micro" color={Colors.text4}>
           Category
         </Text>
         <Pressable onPress={() => router.back()} hitSlop={12}>
@@ -261,6 +309,15 @@ function SectionLabel({ text, trailing }: { text: string; trailing?: string }) {
       )}
     </View>
   );
+}
+
+/** Ember currency rule applied to this screen's two yearly aggregates:
+ * `compact` (`$2.3k`) once it's big enough to abbreviate, otherwise a
+ * whole dollar amount with no cents -- never full cent-precision for a
+ * derived statistic, which is what let "$2.3k Total spent" sit next to
+ * "$254.12 Average per month" as mismatched peers before this. */
+function formatAggregate(value: number): string {
+  return Math.abs(value) >= 1000 ? formatCurrency(value, { compact: true }) : formatCurrency(value, { precision: 'whole' });
 }
 
 function formatShortDate(iso: string): string {
@@ -307,6 +364,14 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg,
     paddingVertical: Spacing.sm,
   },
+  yearlyMetricsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.sm,
+  },
+  yearPicker: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   metricsRow: { flexDirection: 'row', gap: Spacing.xl },
   metricTile: { flex: 1 },
   recurringRow: {

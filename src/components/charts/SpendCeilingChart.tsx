@@ -118,17 +118,25 @@ export function SpendCeilingChart({
             : monthlyCeiling;
 
   const maxTotal = Math.max(...plotPeriods.map(p => p.total), ceiling, 1);
-  // Capped at 0.82 (not 1) -- an uncapped ratio can sit flush against the
-  // very top of the chart when the reference line is close to the tallest
-  // bar, which is exactly what read as "a thick white bar touching the
-  // header/toggles above it" in review. Guarantees the line always has
-  // *some* headroom above it, regardless of how the data happens to fall.
-  const ceilingRatio = ceiling > 0 ? Math.min(0.82, ceiling / maxTotal) : null;
   // Sqrt, not linear -- one outlier period (e.g. a single rent-day week)
   // against a linear scale makes every other bar an near-invisible sliver
   // next to it. Sqrt compresses the outlier and lifts the smaller-but-real
   // bars enough to stay legible, without lying about which one is bigger.
   const scaleHeight = (value: number) => (maxTotal > 0 ? Math.sqrt(Math.max(0, value)) / Math.sqrt(maxTotal) : 0);
+  // Design-audit-round-4: this used to be `ceiling / maxTotal` -- a
+  // *linear* ratio positioning a line against *sqrt-scaled* bars, two
+  // different scales on one chart. The line landed at a height that had
+  // no relationship to where "$220" actually sits on the same curve the
+  // bars are drawn on -- which is exactly what read as "the line crosses
+  // through $22k for no reason" in review. Reusing `scaleHeight` here
+  // instead of re-deriving the ratio guarantees the two can never drift
+  // apart again -- there's only one scale function in this component now.
+  // Capped at 0.82 (not 1) -- an uncapped ratio can sit flush against the
+  // very top of the chart when the reference line is close to the tallest
+  // bar, which is exactly what read as "a thick white bar touching the
+  // header/toggles above it" in review. Guarantees the line always has
+  // *some* headroom above it, regardless of how the data happens to fall.
+  const ceilingRatio = ceiling > 0 ? Math.min(0.82, scaleHeight(ceiling)) : null;
 
   const hasSelection = selectedKey != null;
   const labeledKey = selectedKey ?? plotPeriods[plotPeriods.length - 1]?.key;
@@ -183,6 +191,14 @@ export function SpendCeilingChart({
                     ? Colors.amber
                     : Colors.green
                 : Colors.orange;
+            // Design-audit-round-4: a category with no budget set (so
+            // `ceiling` is 0) used to render identical full-opacity orange
+            // bars to a category that's genuinely on-brand/no-status --
+            // no visual difference between "nothing to judge this
+            // against" and "this is fine." Muting it slightly marks it as
+            // informational-only, distinct from every other bar state
+            // this chart draws, without adding new color vocabulary.
+            const noReferenceSet = colorMode === 'status' && ceiling <= 0;
 
             return (
               <Pressable
@@ -212,7 +228,7 @@ export function SpendCeilingChart({
                     height: barHeight,
                     borderRadius: Radius.sm,
                     backgroundColor: barColor,
-                    opacity: dimmed ? 0.35 : 1,
+                    opacity: dimmed ? 0.35 : noReferenceSet ? 0.55 : 1,
                   }}
                 />
               </Pressable>
@@ -245,6 +261,30 @@ export function SpendCeilingChart({
           </Text>
         </View>
       )}
+      {/* Design-audit-round-4: the red/amber/green logic above was always
+          internally consistent -- it just never told anyone what it meant.
+          A lone amber bar in a sea of red read as an unexplained glitch,
+          not "that month was close." One compact legend, only where the
+          color-coding is actually active, fixes that without adding a
+          permanent fixture to every chart in the app. */}
+      {ceiling > 0 && colorMode === 'status' && (
+        <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.sm }}>
+          <LegendDot color={Colors.green} label="Under" />
+          <LegendDot color={Colors.amber} label="Near" />
+          <LegendDot color={Colors.red} label="Over" />
+        </View>
+      )}
+    </View>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
+      <Text variant="micro" color={Colors.text4}>
+        {label}
+      </Text>
     </View>
   );
 }
